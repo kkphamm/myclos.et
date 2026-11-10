@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="DrapeFit: a CS184 Fall 2026 final project proposal for approximate clothing fit visualization on adjustable bodies.">
-  <title>DrapeFit — CS184 Final Project Proposal</title>
+  <meta name="description" content="myclos.et: a CS184 Fall 2026 final project proposal for an interactive virtual closet that drapes clothing on adjustable bodies.">
+  <title>myclos.et — CS184 Final Project Proposal</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main>
     <header class="page-header">
       <p class="eyebrow">CS184 · Fall 2026 Final Project Proposal</p>
-      <h1>DrapeFit: Clothing on Adjustable Bodies</h1>
-      <p class="summary">We propose an interactive 3D virtual try-on prototype that lets users adjust a body's proportions and compare how different garment sizes drape on it. We will combine editable body geometry with a mass–spring cloth simulation, body collisions, and a visualization of relative fabric stretch. Our goal is to explore approximate size and shape differences through graphics, while evaluating the limitations of our simulation.</p>
+      <h1>myclos.et: A Playable Virtual Closet</h1>
+      <p class="summary">myclos.et is an interactive 3D virtual try-on demo. Users shape a body with sliders, browse a small store of garments simulated on that body, and open any item in a live try-on view where the cloth drapes, collides, and blows in the wind in real time. Under the hood, we combine editable body geometry with a mass–spring cloth simulation, body and self-collisions, and a relative-stretch heatmap that shows where clothes are tight or loose.</p>
     </header>
 
     <section id="team" aria-label="Team members">
@@ -24,20 +24,20 @@
 
     <section id="problem" aria-labelledby="problem-heading">
       <h2 id="problem-heading">Problem</h2>
-      <p>Clothing photos show garments on particular bodies, while size labels do not show how one might hang on different proportions. We want users to explore drape and silhouette by adjusting a body and selecting garment sizes. This will be an approximate fit visualization, not a faithful digital twin, universal retailer system, or accurate size recommendation. Simulated stretch will not represent measured pressure.</p>
-      <p>We plan to parameterize a body triangle mesh with controls for height, chest, waist, hips, and shoulder width. Height and weight may provide a coarse preset, but cannot reconstruct an individual; users will correct proportions with measurements or sliders. We will update its collision representation as the mesh changes. Front and back garment panels will start around the body, connect at seams, and settle under gravity. Approximate compound body colliders will support the baseline. After a measurement edit, we will reset and resimulate the cloth.</p>
-      <p>Editable geometry, garment construction, numerical stability, seams, and intersection prevention are the central challenges. We will begin with one standing pose, one sleeveless top, three sizes, and one uncalibrated fabric model to study behavior and diagnose failures.</p>
+      <p>Clothing photos show garments on particular bodies, and size labels do not show how a garment will hang on different proportions. We want users to explore drape, silhouette, and tightness by shaping a body, browsing a store of clothes on that body, and comparing sizes side by side. myclos.et is an approximate visualization, not a validated size-recommendation system.</p>
+      <p>We will parameterize a body triangle mesh with controls for height, chest, waist, hips, and shoulder width, plus presets, and update its collision representation as the mesh changes. Garments are built from front and back panels that start around the body, connect at seams, and settle under gravity. When the user drags a slider, the cloth keeps simulating and re-settles onto the new body live, instead of resetting.</p>
+      <p>The central challenges are editable body geometry, garment construction from panels and seams, numerical stability, and preventing cloth from passing through the body or itself, especially while the body is changing shape. Simulating a whole store of items on one body adds a performance and caching challenge.</p>
       <h3>Course concepts and planned use</h3>
       <div class="table-scroll" role="region" aria-label="Course concepts and planned use" tabindex="0">
         <table>
           <thead><tr><th scope="col">Course material</th><th scope="col">Our planned use and extension</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Triangle meshes and geometry processing · HW2</th><td>Represent body and garment surfaces, use adjacency, and recompute normals after deformation. Local, measurement-based body deformation will be our extension.</td></tr>
-            <tr><th scope="row">Transforms and projection · earlier lectures, HW1</th><td>Position and scale scene parts and keep a consistent camera. Independent proportion controls will go beyond one global scale.</td></tr>
-            <tr><th scope="row">Mass–spring cloth · HW4 Part 1</th><td>Use structural, shear, and bending connections, then extend the rectangular sheet to panels and seams.</td></tr>
-            <tr><th scope="row">Forces and integration · HW4 Part 2</th><td>Apply gravity, Hooke's law, Verlet integration, damping, and deformation constraints; investigate timestep and stiffness tradeoffs.</td></tr>
-            <tr><th scope="row">Collisions · HW4 Parts 3–4</th><td>Extend object collisions to a compound body proxy and use spatial hashing for basic cloth self-collision.</td></tr>
-            <tr><th scope="row">Shading and texture mapping · HW1, HW4 Part 5</th><td>Use normals and lighting to reveal folds, alongside a separate stretch-color view. Richer fabric appearance is optional.</td></tr>
+            <tr><th scope="row">Triangle meshes and geometry processing · HW2</th><td>Represent body and garment surfaces, use adjacency, and recompute normals after deformation. Local, measurement-based body deformation and parameterized garment templates will be our extension.</td></tr>
+            <tr><th scope="row">Transforms and projection · earlier lectures, HW1</th><td>Position and scale scene parts and keep a consistent camera. Independent proportion controls go beyond one global scale; pose presets use skeletal skinning.</td></tr>
+            <tr><th scope="row">Mass–spring cloth · HW4 Part 1</th><td>Use structural, shear, and bending connections, then extend the rectangular sheet to garment panels and seams.</td></tr>
+            <tr><th scope="row">Forces and integration · HW4 Part 2</th><td>Apply gravity, Hooke's law, Verlet integration, damping, and wind; investigate timestep and stiffness tradeoffs.</td></tr>
+            <tr><th scope="row">Collisions · HW4 Parts 3–4</th><td>Extend object collisions to a body collision proxy that updates with the sliders, and use spatial hashing for cloth self-collision.</td></tr>
+            <tr><th scope="row">Shading and texture mapping · HW1, HW4 Part 5</th><td>Shade folds with normals and lighting, apply colors and prints with texture mapping, show a stretch heatmap, and add lighting presets.</td></tr>
           </tbody>
         </table>
       </div>
@@ -46,40 +46,46 @@
     <section id="goals" aria-labelledby="goals-heading">
       <h2 id="goals-heading">Goals</h2>
       <h3>Baseline: what we plan to deliver</h3>
-      <p>We plan to build one adjustable body with reproducible presets and one sleeveless top with sewn front and back panels. Three garment sizes will have dimensions independent of the body: changing body proportions will not resize the garment. A mass–spring solver will include gravity, damping, seams, body collisions, and basic self-collision.</p>
-      <p>A desktop demo will offer body controls, size selection, an orbit camera, reset and resimulate, and shaded and stretch-color views. The color map will show <strong>relative stretch</strong>: for each edge, max(0, (current length − rest length) / rest length), averaged at vertices. It will not be a measured pressure or validated comfort score. If a garment is too small for the chosen constraints, the demo will expose remaining stretch, intersections, or failure to settle instead of silently enlarging it.</p>
-      <p>Outputs will include side-by-side images for three body shapes by three garment sizes, a short video, and an implementation and results report.</p>
+      <ol>
+        <li><strong>Adjustable body:</strong> live sliders for height, chest, waist, hips, and shoulder width, plus body presets.</li>
+        <li><strong>Garments:</strong> three garment templates (tank top, skirt, sleeveless dress), each in S/M/L. Garment dimensions are independent of the body, so changing proportions does not resize the garment.</li>
+        <li><strong>Cloth simulation:</strong> a mass–spring solver with seams, gravity, damping, body collisions, and self-collision.</li>
+        <li><strong>Wind:</strong> a wind force on the cloth with on/off, strength, and direction controls, scaled by how directly each triangle faces the wind, with light random gusting.</li>
+        <li><strong>Playable demo:</strong> a live try-on view with an orbit camera; a wardrobe panel and S/M/L size buttons; toggles for the stretch heatmap, wireframe, and turntable spin; all in a Dear ImGui interface.</li>
+        <li><strong>Store mode:</strong> about 10 items generated from template variations (length, fit, color/print). After the user sets their body once, each item is simulated on it and cached, and a store grid shows a thumbnail of the body wearing each item. Clicking an item opens it in the live try-on view.</li>
+      </ol>
+      <p>The heatmap shows <strong>relative stretch</strong>: for each edge, max(0, (current length − rest length) / rest length), averaged at vertices. If a garment is too small for the body, the demo shows the remaining stretch or intersections instead of silently enlarging it.</p>
+      <p>Outputs will include side-by-side images for three body shapes by three garment sizes, a screenshot of the store grid, a short demo video, and an implementation and results report.</p>
       <h3>Our contribution beyond HW4</h3>
-      <p>HW4 will be a conceptual starting point for cloth behavior, not the full project. Our planned additions are locally adjustable body geometry, garment panel topology and seams, dimensioned sizes, a matching compound collision representation, and a controlled comparison and diagnostic workflow.</p>
+      <p>HW4 is a conceptual starting point for cloth behavior, not the full project. Our additions are locally adjustable body geometry, garment panel topology and seams, parameterized garment templates with dimensioned sizes, a body collision representation that updates live, wind, a cached store-mode pipeline, and an interactive try-on interface.</p>
       <h3>Questions and evaluation</h3>
       <ol>
-        <li>How will body proportions and garment dimensions affect silhouette and stretch patterns?</li>
-        <li>How will mesh resolution, timestep, and spring stiffness affect runtime and stability?</li>
-        <li>Where will a simplified body collision proxy produce visible errors?</li>
+        <li>How do body proportions and garment dimensions affect silhouette and stretch patterns?</li>
+        <li>How do mesh resolution, timestep, and spring stiffness affect runtime and stability?</li>
+        <li>Can the simulation stay stable and interactive while the body changes shape live?</li>
+        <li>Where does a simplified body collision proxy produce visible errors?</li>
       </ol>
-      <p>We will run the 3-by-3 comparison with fixed fabric settings, pose, camera, and a documented settling rule or time budget. We will record cloth vertex count and test hardware, and report simulation milliseconds per step, total settling time, and rendering frame rate separately. We will compare at least two mesh resolutions and state their settings. Remaining cloth vertices inside the collision proxy, maximum penetration depth, and relative stretch summaries will diagnose the solver and proxy; they will not establish real-world fit accuracy.</p>
-      <p>Images will compare folds, silhouette, clipping, and failures. We will aim for responsive interaction. If garment measurements or photos become available, we may compare them qualitatively; stability alone will not validate clothing accuracy.</p>
+      <p>We will run the 3-by-3 comparison with fixed fabric settings, pose, camera, and a documented settling rule. We will report cloth vertex count, test hardware, simulation milliseconds per step, settling time, rendering frame rate, and the time to build the store grid. We will compare at least two mesh resolutions. Cloth vertices remaining inside the collision proxy, maximum penetration depth, and relative stretch summaries will diagnose the solver and proxy.</p>
       <h3>Stretch goals: what we hope to deliver</h3>
       <ol>
-        <li>More faithful cloth–body mesh collisions, with acceleration if needed.</li>
-        <li>A second fabric parameter set and a discussion of its effects.</li>
-        <li>Sleeves or a second garment type.</li>
-        <li>Simple pose changes.</li>
+        <li><strong>Pose presets:</strong> A-pose, arms up, and hands on hips using skeletal skinning, with the cloth re-settling on the new pose.</li>
+        <li><strong>Lighting presets:</strong> daylight, sunset, office, and club lighting using environment maps and shadows, so users can see an outfit in different settings.</li>
+        <li><strong>Fabric presets:</strong> cotton, silk, and denim with different stiffness, weight, damping, and appearance.</li>
       </ol>
-      <p>GPU acceleration, photorealistic rendering, body scanning, and ML training are outside the baseline.</p>
+      <p>GPU acceleration, photorealistic rendering, sleeves and pants, body scanning, and ML training are outside our plans.</p>
     </section>
 
     <section id="schedule" aria-labelledby="schedule-heading">
       <h2 id="schedule-heading">Schedule</h2>
-      <p>Suggested work areas are body geometry, garment and solver, collisions and performance, and rendering and evaluation. Owners are TBD.</p>
+      <p>Suggested work areas are body geometry and poses, garments and solver, collisions and performance, and rendering, UI, and store mode. Owners are TBD.</p>
       <div class="table-scroll" role="region" aria-label="Project schedule" tabindex="0">
         <table>
           <thead><tr><th scope="col">Dates</th><th scope="col">Planned work</th><th scope="col">Checkpoint output</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Nov 13–19</th><td>Finalize scope after feedback; set up simulation; create adjustable body and garment panel pair; test cloth on body.</td><td>Initial geometry and draping screenshots.</td></tr>
-            <tr><th scope="row">Nov 20–26</th><td>Connect seams, three sizes, body controls, and collisions; then address stability and self-collision.</td><td>By Nov 22: preliminary results, a 1-minute video, 2–3 slides, and an updated plan.</td></tr>
-            <tr><th scope="row">Nov 27–Dec 3</th><td>Finish controls and stretch view; run comparison and resolution/timestep studies; record metrics and address visible failures.</td><td>Comparison grid and measurements.</td></tr>
-            <tr><th scope="row">Dec 4–8</th><td>Freeze baseline; finish report, video, and reproducibility notes by Dec 6; rehearse for presentations.</td><td>Final report, 1–2-minute video, and Dec 7–8 presentation.</td></tr>
+            <tr><th scope="row">Nov 13–19</th><td>Finalize scope after feedback; set up the simulator and Dear ImGui viewer; build the adjustable body and the first garment panels; test cloth on the body.</td><td>Initial geometry and draping screenshots.</td></tr>
+            <tr><th scope="row">Nov 20–26</th><td>Seams, S/M/L sizes, live body sliders, body collisions, and self-collision; second garment template; wind.</td><td>By Nov 22: two garments draping on an adjustable body, a 1-minute video, 2–3 slides, and an updated plan.</td></tr>
+            <tr><th scope="row">Nov 27–Dec 3</th><td>Third template and garment variations; store mode with cached simulation and thumbnail grid; wardrobe UI, heatmap, and toggles; stretch goals if ahead; record metrics.</td><td>Playable demo with store grid, comparison images, and measurements.</td></tr>
+            <tr><th scope="row">Dec 4–8</th><td>Freeze features; polish the UI; finish report and video by Dec 6; rehearse for presentations.</td><td>Final report, 1–2-minute video, and Dec 7–8 presentation.</td></tr>
           </tbody>
         </table>
       </div>
@@ -87,8 +93,18 @@
 
     <section id="resources" aria-labelledby="resources-heading">
       <h2 id="resources-heading">Resources</h2>
-      <p>We propose C++ with an OpenGL/GLSL viewer, drawing on course cloth concepts. The simulator will be a desktop program; this site is plain HTML and CSS. We expect to use team laptops and standard graphics hardware; the benchmark machine is TBD. Blender may help author geometry, but its cloth solver will not substitute for our implementation. We will prefer procedural or self-authored assets.</p>
+      <p>We propose C++ with an OpenGL/GLSL viewer and a Dear ImGui interface, drawing on course cloth concepts. The demo will be a desktop program; this site is plain HTML and CSS. We expect to use team laptops and standard graphics hardware; the benchmark machine is TBD. Blender may help author geometry, but its cloth solver will not substitute for our implementation. We will prefer procedural or self-authored assets.</p>
       <p>We will document the code starting point before development and distinguish permitted use of our HW4 work from new contributions. We will not copy or publish homework starter or solution code here; the course prohibits public posting of homework code.</p>
+      <h3>References</h3>
+      <ul>
+        <li>X. Provot. "Deformation Constraints in a Mass-Spring Model to Describe Rigid Cloth Behavior." Graphics Interface, 1995.</li>
+        <li>D. Baraff and A. Witkin. "Large Steps in Cloth Simulation." SIGGRAPH, 1998.</li>
+        <li>R. Bridson, R. Fedkiw, and J. Anderson. "Robust Treatment of Collisions, Contact and Friction for Cloth Animation." SIGGRAPH, 2002.</li>
+        <li>M. Teschner et al. "Optimized Spatial Hashing for Collision Detection of Deformable Objects." VMV, 2003.</li>
+        <li>M. Müller et al. "Position Based Dynamics." VRIPHYS, 2006.</li>
+        <li>Dear ImGui: <a href="https://github.com/ocornut/imgui">github.com/ocornut/imgui</a></li>
+        <li>CS184 HW4 (ClothSim) course materials.</li>
+      </ul>
     </section>
   </main>
 </body>
