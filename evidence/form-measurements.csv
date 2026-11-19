@@ -1,0 +1,11 @@
+form,configuration,height_cm,chest_cm,waist_cm,hip_cm,shoulder_cm,crotch_to_floor_cm
+feminine,Classic,170.00,91.94,74.00,98.32,39.32,79.25
+feminine,Compact,160.00,83.94,68.00,90.30,36.36,74.59
+feminine,Tall,180.00,105.93,90.00,112.37,45.25,83.91
+feminine,broad chest,150.00,111.92,62.00,118.39,35.45,69.93
+feminine,broad shoulders,188.00,81.94,95.00,84.28,47.17,87.64
+masculine,Classic,178.00,98.93,82.02,98.33,44.18,81.37
+masculine,Compact,167.00,89.94,76.02,92.31,41.16,76.34
+masculine,Tall,185.00,107.92,90.02,105.36,47.19,84.57
+masculine,broad chest,150.00,111.90,62.01,118.40,36.15,68.57
+masculine,broad shoulders,188.00,81.99,95.02,84.29,48.19,85.94
