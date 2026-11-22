@@ -31,6 +31,20 @@ Simulation drape(Body body,int item,int size,bool masculine,const BodyContact& c
     return sim;
 }
 
+// The fitted body, its collision field and its display mesh are rebuilt together.
+struct Form {
+    DrapeKey key;
+    BodyContact contact;
+    Mesh display;
+};
+
+Form fitForm(DrapeKey key) {
+    Mesh avatar=bodyMesh(key.body,key.masculine);
+    BodyContact contact=fittingContact(avatar,key.masculine);
+    Mesh display=displayBodyMesh(avatar,key.masculine,key.body.height);
+    return {key,std::move(contact),std::move(display)};
+}
+
 struct Entry {
     Target target;
     std::optional<Simulation> sim;
@@ -40,15 +54,16 @@ struct Entry {
 void runFittingRoom(GLFWwindow* window,const std::filesystem::path& captures) {
     Renderer renderer;
     Ui ui;
-    auto avatar=bodyMesh(ui.body,ui.masculine);
-    auto contact=fittingContact(avatar,ui.masculine);
-    auto display=displayBodyMesh(avatar,ui.masculine,ui.body.height);
+    Form form=fitForm({ui.body,0,ui.masculine});
+    // Body edits rebuild the form off the UI thread; the scene keeps the last finished form.
+    std::future<Form> formJob;
     std::array<std::optional<Simulation>,2> outfit;
-    DrapeKey model{ui.body,0,ui.masculine};
     ui.reset=true;
     Target scene;
     std::array<Entry,items.size()> cards;
-    auto previewKey=[&](int item){ return DrapeKey{ui.body,ui.garmentSizes[items[item].bottom()],ui.masculine}; };
+    auto previewKey=[&](int item){
+        return DrapeKey{form.key.body,ui.garmentSizes[items[item].bottom()],form.key.masculine};
+    };
     std::future<Simulation> job;
     double previousTime=glfwGetTime(), accumulator=0;
     auto storeStart=Clock::now();
@@ -64,15 +79,20 @@ void runFittingRoom(GLFWwindow* window,const std::filesystem::path& captures) {
 
         const bool reset=ui.reset;
         ui.reset=false;
-        const DrapeKey wantedModel{ui.body,0,ui.masculine};
-        const bool modelChanged=ui.masculine!=model.masculine;
-        const bool formChanged=!(wantedModel==model);
-        if(formChanged){
-            avatar=bodyMesh(ui.body,ui.masculine);
-            contact=fittingContact(avatar,ui.masculine);
-            display=displayBodyMesh(avatar,ui.masculine,ui.body.height);
-            model=wantedModel;
+        const DrapeKey wantedForm{ui.body,0,ui.masculine};
+        bool formChanged=false, modelChanged=false;
+        if(formJob.valid() && formJob.wait_for(std::chrono::seconds(0))==std::future_status::ready) {
+            Form next=formJob.get();
+            modelChanged=next.key.masculine!=form.key.masculine;
+            formChanged=true;
+            form=std::move(next);
         }
+        if(!formJob.valid() && !(wantedForm==form.key))
+            formJob=std::async(std::launch::async,fitForm,wantedForm);
+        const bool formCurrent=!formJob.valid() && wantedForm==form.key;
+        const BodyContact& contact=form.contact;
+        const Body& body=form.key.body;
+        const bool masculine=form.key.masculine;
         auto matchesPreview=[&](const Simulation& sim){
             return DrapeKey{sim.body,sim.size,sim.masculine}==previewKey(sim.item);
         };
@@ -94,11 +114,11 @@ void runFittingRoom(GLFWwindow* window,const std::filesystem::path& captures) {
                 sim.reset();
             } else if(reset || !sim || sim->item!=item || sim->size!=size || modelChanged) {
                 if(cards[item].sim) sim=cards[item].sim;
-                else if(reset) sim=drape(ui.body,item,size,ui.masculine,contact);
-                else sim.emplace(ui.body,item,size,ui.masculine,contact);
+                else if(reset) sim=drape(body,item,size,masculine,contact);
+                else sim.emplace(body,item,size,masculine,contact);
                 changed=true;
             } else if(formChanged){
-                sim->updateBody(ui.body,contact);
+                sim->updateBody(body,contact);
             }
         }
         if(changed && outfit[0] && outfit[1]) layerOutfit(*outfit[0],*outfit[1]);
@@ -114,7 +134,7 @@ void runFittingRoom(GLFWwindow* window,const std::filesystem::path& captures) {
                 if(ui.store && !card.target.texture){
                     Camera camera{};
                     camera.productView=true;
-                    renderer.draw(card.target,880,500,display,ui.body.height,&*card.sim,nullptr,camera,false);
+                    renderer.draw(card.target,880,500,form.display,body.height,&*card.sim,nullptr,camera,false);
                 }
                 thumbs[i]=card.target.texture;
                 ++ready;
@@ -124,7 +144,7 @@ void runFittingRoom(GLFWwindow* window,const std::filesystem::path& captures) {
         previousStore=ui.store;
         if(ui.store && missing>=0 && !job.valid() && !ImGui::GetIO().MouseDown[0]){
             if(!timingStore){storeStart=Clock::now(); timingStore=true;}
-            job=std::async(std::launch::async,drape,ui.body,missing,previewKey(missing).size,ui.masculine,contact);
+            job=std::async(std::launch::async,drape,body,missing,previewKey(missing).size,masculine,contact);
         }
         if(timingStore && ready==visible){
             std::cout<<"Store ready in "<<std::chrono::duration<double>(Clock::now()-storeStart).count()<<" s"<<std::endl;
@@ -148,7 +168,7 @@ void runFittingRoom(GLFWwindow* window,const std::filesystem::path& captures) {
             auto layer=[&](int slot) -> const Simulation* { return outfit[slot] ? &*outfit[slot] : nullptr; };
             renderer.draw(scene,std::max(1,int(size[0]*io.DisplayFramebufferScale.x)),
                            std::max(1,int(size[1]*io.DisplayFramebufferScale.y)),
-                           display,ui.body.height,layer(ui.slot),layer(1-ui.slot),{ui.yaw,ui.pitch,ui.zoom},ui.heatmap);
+                           form.display,body.height,layer(ui.slot),layer(1-ui.slot),{ui.yaw,ui.pitch,ui.zoom},ui.heatmap);
         }
         drawUi(ui,scene.texture,thumbs);
         ImGui::Render();
@@ -156,7 +176,7 @@ void runFittingRoom(GLFWwindow* window,const std::filesystem::path& captures) {
         glBindFramebuffer(GL_FRAMEBUFFER,0);
         glViewport(0,0,w,h); glClearColor(.95f,.94f,.92f,1);glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        if(capture.saveIfReady(!ui.store || ready==visible,w,h))
+        if(capture.saveIfReady(formCurrent && (!ui.store || ready==visible),w,h))
             glfwSetWindowShouldClose(window,GLFW_TRUE);
         glfwSwapBuffers(window);
     }

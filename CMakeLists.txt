@@ -14,6 +14,8 @@ add_library(cloth
   src/simulation/outfit_contact.cpp
 )
 target_include_directories(cloth PUBLIC src src/simulation)
+find_package(Threads REQUIRED)
+target_link_libraries(cloth PUBLIC Threads::Threads)
 
 add_executable(mycloset_bench tools/bench.cpp)
 target_link_libraries(mycloset_bench PRIVATE cloth)

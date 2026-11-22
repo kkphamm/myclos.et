@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <thread>
 
 namespace closet {
 namespace {
@@ -162,15 +163,6 @@ struct BodyContact::Data {
                     if(arm || leg) limbs[iy][2*int(arm)+int(point.x>0)].include(point);
                 }
             }
-            // Exact point-to-triangle distance at lattice samples adjacent to the skin.
-            for(int z=z0-1;z<=z1+2;++z) for(int y=y0-1;y<=y1+2;++y) {
-                float* row=&distance[(z*ny+y)*nx];
-                Vec3 p{0,origin.y+y*cell,origin.z+z*cell};
-                for(int x=x0-1;x<=x1+2;++x) {
-                    p.x=origin.x+x*cell;
-                    row[x]=std::min(row[x],t.squaredDistance(p));
-                }
-            }
             // Signed crossings along Z distinguish arm/torso and inter-leg gaps.
             const double den=double(t.ab.x)*(-t.ca.y)-double(t.ab.y)*(-t.ca.x);
             if(std::abs(den)<1e-15) continue;
@@ -183,6 +175,7 @@ struct BodyContact::Data {
                 crossings[(z*ny+y)*nx+x]^=1;
             }
         }
+        rasterizeDistances();
         for(int i=0;i<ny;++i) fitSection(sections[i],slices[i]);
         for(float& d:distance) d=std::sqrt(d);
         // Extend distances into the interior and empty space by two chamfer sweeps.
@@ -205,6 +198,35 @@ struct BodyContact::Data {
                 if(inside) distance[i]=-distance[i];
             }
         }
+    }
+
+    // Exact squared point-to-triangle distance at lattice samples adjacent to the skin. Each
+    // worker owns a band of Y rows, so every cell takes the same minimum as a serial pass.
+    void rasterizeDistances() {
+        auto index=[&](float a,float b,float c,float o) {return int((std::min({a,b,c})-o)*invCell);};
+        auto top=[&](float a,float b,float c,float o) {return int((std::max({a,b,c})-o)*invCell);};
+        auto band=[&](int rowBegin,int rowEnd) {
+            for(const Triangle& t:triangles) {
+                const int y0=std::max(index(t.a.y,t.b.y,t.c.y,origin.y)-1,rowBegin);
+                const int y1=std::min(top(t.a.y,t.b.y,t.c.y,origin.y)+2,rowEnd-1);
+                if(y0>y1) continue;
+                const int x0=index(t.a.x,t.b.x,t.c.x,origin.x),x1=top(t.a.x,t.b.x,t.c.x,origin.x);
+                const int z0=index(t.a.z,t.b.z,t.c.z,origin.z),z1=top(t.a.z,t.b.z,t.c.z,origin.z);
+                for(int z=z0-1;z<=z1+2;++z) for(int y=y0;y<=y1;++y) {
+                    float* row=&distance[(z*ny+y)*nx];
+                    Vec3 p{0,origin.y+y*cell,origin.z+z*cell};
+                    for(int x=x0-1;x<=x1+2;++x) {
+                        p.x=origin.x+x*cell;
+                        row[x]=std::min(row[x],t.squaredDistance(p));
+                    }
+                }
+            }
+        };
+        const int workers=int(std::clamp(std::thread::hardware_concurrency(),1u,8u));
+        std::vector<std::thread> pool;
+        for(int w=1;w<workers;++w) pool.emplace_back(band,ny*w/workers,ny*(w+1)/workers);
+        band(0,ny/workers);
+        for(auto& thread:pool) thread.join();
     }
 
     float sample(Vec3 p,Vec3& gradient) const {
