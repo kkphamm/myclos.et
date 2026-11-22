@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Milestone report for myclos.et, an interactive virtual try-on project for UC Berkeley CS184 Fall 2026.">
+  <title>myclos.et — CS184 Milestone Report</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="milestone">
+    <header class="page-header">
+      <h1>myclos.et</h1>
+      <p class="milestone-course">CS184 · Fall 2026 Milestone Report</p>
+      <p class="summary">myclos.et is an interactive 3D fitting room that shows how the same garment drapes on bodies with different proportions.</p>
+      <p>Kenny Pham, Aiden Solomon, Jeslyn Nguyen, and Junehee Lee</p>
+      <p><a href="index.html">Project proposal</a></p>
+    </header>
+
+    <section aria-labelledby="progress-heading">
+      <h2 id="progress-heading">Progress</h2>
+      <p>We reached our milestone goal of two garments draping on an adjustable body. The C++ demo now supports 11 styles in S/M/L, live body measurements, two-piece outfits, wind, and a stretch heatmap. Since the AI-assisted starting prototype, the fitting models and garment patterns have been revised, and the app can export measurements and matched views.</p>
+      <p><strong>Team contributions</strong> <span class="milestone-blank">[Add what each teammate implemented or tested]</span></p>
+    </section>
+
+    <section aria-labelledby="results-heading">
+      <h2 id="results-heading">Preliminary results</h2>
+      <div class="milestone-figures">
+        <figure>
+          <img src="evidence/milestone/regular-outfit.webp" width="600" height="800" alt="The Tall mannequin wears a purple tee and beige trousers with the wind off.">
+          <figcaption>Regular fit</figcaption>
+        </figure>
+        <figure>
+          <img src="evidence/milestone/heatmap-outfit.webp" width="600" height="800" alt="The same full outfit with a stretch heatmap. Warm colors show more stretch near the shoulders and chest.">
+          <figcaption>Stretch heatmap</figcaption>
+        </figure>
+        <figure>
+          <img src="evidence/milestone/wind-outfit.webp" width="600" height="800" alt="The same tee and trousers under a side gust that shifts the tee’s hem and changes the folds.">
+          <figcaption>Wind on</figcaption>
+        </figure>
+      </div>
+      <p>All three views show the same medium tee and trousers on the Tall preset. In the heatmap, teal marks 0% stretch, amber 15%, and red 30% or more. The tee had <strong>18.7 cm of chest ease on Compact and 7.5 cm on Tall</strong>, measured as garment minus body circumference. A separate static check found cloth–body triangle crossings in <strong>72 of 198 fits</strong>. <a href="evidence/milestone/fit-report.csv">Fit measurements</a> · <a href="evidence/milestone/fit-check.csv">Collision results</a></p>
+    </section>
+
+    <section aria-labelledby="plan-heading">
+      <h2 id="plan-heading">Updated plan</h2>
+      <p>We’ll focus on reducing cloth intersections near the shoulders and hips. Then we’ll compare two mesh resolutions and measure how timestep and spring stiffness affect settling and runtime. We’ll use consistent camera views for the final fit comparison and document the team’s implementation and results.</p>
+    </section>
+
+    <section aria-labelledby="links-heading">
+      <h2 id="links-heading">Milestone links</h2>
+      <dl class="milestone-links">
+        <div><dt>Published webpage</dt><dd class="milestone-blank">[Add URL]</dd></div>
+        <div><dt>Progress video</dt><dd class="milestone-blank">[Add video link]</dd></div>
+        <div><dt>Slides</dt><dd class="milestone-blank">[Add slides link]</dd></div>
+      </dl>
+    </section>
+  </main>
+</body>
+</html>

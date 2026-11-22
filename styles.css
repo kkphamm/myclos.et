@@ -48,3 +48,41 @@ tbody th { width: 29%; font-weight: 650; }
   tr, h2, h3, .team-list li { break-inside: avoid; }
   h2, h3 { break-after: avoid; }
 }
+
+.milestone .page-header p:last-child { margin-bottom: 0; }
+.milestone-course { margin: .35rem 0 0; color: var(--accent); font-weight: 650; }
+.milestone p { max-width: 44rem; }
+.milestone a, .page-header a { color: var(--accent); text-underline-offset: .17em; }
+.milestone a:focus-visible, .page-header a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.milestone-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .9rem;
+  max-width: 44rem;
+  margin: 0 0 .85rem;
+}
+.milestone-figures figure { margin: 0; }
+.milestone-figures img { display: block; width: 100%; height: auto; border: 1px solid var(--line); }
+.milestone-figures figcaption { padding-top: .28rem; font-size: .9em; font-weight: 650; }
+.milestone-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr));
+  gap: .45rem 1rem;
+  margin: 0;
+}
+.milestone-links > div { padding: .45em 0; border-top: 1px solid var(--line); }
+.milestone-links dt { font-weight: 650; }
+.milestone-links dd { margin: 0; }
+.milestone-blank { color: var(--accent); }
+@media screen and (max-width: 480px) {
+  .milestone-figures { grid-template-columns: 1fr; max-width: 18rem; }
+}
+@media print {
+  .milestone section { padding: .55rem 0 0; }
+  .milestone h2 { margin: 0 0 .35rem; }
+  .milestone .summary { margin: .55rem 0; font-size: inherit; }
+  .milestone p { max-width: none; margin-bottom: .35rem; }
+  .milestone-figures { max-width: 4.1in; margin-bottom: .42rem; break-inside: avoid; }
+  .milestone-figures figcaption { font-size: 8.25pt; }
+  .milestone-links { grid-template-columns: repeat(3, 1fr); break-inside: avoid; }
+}
