@@ -5,7 +5,7 @@
 
 namespace closet::cloth_math {
 constexpr float pi = 3.14159265358979f;
-constexpr float clearance=.0045f;
+constexpr float clearance=.0025f;
 inline float blend(float a,float b,float t) { return a+(b-a)*t; }
 inline float smoothBetween(float low,float high,float value) {
     const float t=std::clamp((value-low)/(high-low),0.f,1.f);

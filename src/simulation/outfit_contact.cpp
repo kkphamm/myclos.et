@@ -37,7 +37,7 @@ void layerOutfit(Simulation& top,Simulation& bottom) {
             p=bottom.contact.project(p+(dressed-p)*(outerPanel*weight),clearance+.0025f);
             Vec3 correction=p-before;
             if(dot(correction,correction)>1e-12f) {
-                bottom.previous[i]=bottom.previous[i]+correction;
+                bottom.previous[i]=p-(before-bottom.previous[i])*.75f;
                 bottomMoved=true;
             }
         }
@@ -65,8 +65,7 @@ void layerOutfit(Simulation& top,Simulation& bottom) {
         moved=true;
         const Vec3 before=p;
         p=top.contact.project(top.contact.dress(p+ray*(target-radius),clearance+.002f),clearance+.002f);
-        Vec3 correction=p-before;
-        top.previous[i]=top.previous[i]+correction;
+        top.previous[i]=p-(before-top.previous[i])*.75f;
     }
     if(moved) top.updateStretch();
 }

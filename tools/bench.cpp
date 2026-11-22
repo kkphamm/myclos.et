@@ -45,16 +45,6 @@ static void checkOpenings(const Mesh& mesh,int expected) {
     require(components(links)==1 && components(boundary)==expected,"wrong number of sewn pieces or garment openings");
 }
 
-static float centerBackTape(const std::vector<Vec3>& points) {
-    constexpr int ring=Simulation::ringSize, back=3*ring/4;
-    float tape=0;
-    for(int row=1;row<=Simulation::panelRows;++row) {
-        Vec3 a=points[(row-1)*ring+back], b=points[row*ring+back];
-        tape+=std::hypot(a.x-b.x,a.y-b.y,a.z-b.z);
-    }
-    return tape*100;
-}
-
 static float rightLegWidthAt(const Mesh& mesh,float height) {
     float lo=1.f,hi=-1.f;
     for(auto face:mesh.triangles) for(int k=0;k<3;++k) {
@@ -141,7 +131,7 @@ static void checkChartPattern(int item,int size) {
     }
     require(pts.size()>=(top+1)*ring,"garment lacks chart landmarks");
     const int back=3*ring/4;
-    float length=style.bottom()?100*(pts[top*ring+back].y-pts[back].y):centerBackTape(pts);
+    float length=style.bottom()?100*(pts[top*ring+back].y-pts[back].y):sim.backLengthCm(pts);
     require(std::abs(length-chart.lengthCm)<.02f,"pattern length differs from size chart");
     if(style.bottom()) {
         require(std::abs(girth(top)-chart.waistCircCm)<.02f,"waist differs from size chart");
@@ -154,6 +144,10 @@ static void checkChartPattern(int item,int size) {
         }
     } else {
         require(std::abs(girth(landmark)*.5f-chart.chestFlatCm)<.02f,"chest differs from size chart");
+        for(int k=0;k<ring;++k) {
+            const Vec3 a=pts[top*ring+k],b=pts[top*ring+(ring+ring/2-k)%ring];
+            require(std::hypot(a.x+b.x,a.y-b.y,a.z-b.z)<.00001f,"asymmetric neckline or armholes");
+        }
         if(style.tee()) checkSleeves(pts,chart);
     }
 }
@@ -208,8 +202,10 @@ static void check() {
         bool settled=false;
         settle(sim,settled);
         const auto& pts=sim.cloth.positions;
-        require(std::abs(centerBackTape(pts)-style.sizes[size].lengthCm)<2.f,
-                "draped back length differs from the chart by more than 2 cm");
+        const float back=sim.backLengthCm(pts);
+        if(std::abs(back-style.sizes[size].lengthCm)>=2.f)
+            throw std::runtime_error(std::string(style.name)+" "+"SML"[size]+" draped HPS length: "+
+                                     std::to_string(back)+" cm, chart: "+std::to_string(style.sizes[size].lengthCm)+" cm");
         if(!style.tee()) continue;
         auto& fit=shirts[style.cut==Cut::OversizedTee][size];
         constexpr int n=Simulation::ringSize,start=n*Simulation::measureRow;

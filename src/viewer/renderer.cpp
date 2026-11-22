@@ -62,7 +62,7 @@ uniform int mode;
 uniform vec3 eye;
 uniform sampler2DShadow lightDepth;
 uniform vec4 fabric, footShadow[2];
-uniform vec3 tailoring; // Cut, rest waist height and rest hip radius.
+uniform vec3 tailoring; // Cut, rest seam height and rest hip radius.
 uniform vec2 scale;
 uniform float focus;
 out vec4 outColor;
@@ -100,12 +100,15 @@ void main() {
         sun+=texture(lightDepth,vec3(lightPoint.xy+vec2(x,y)*texel*2.2,lightPoint.z-bias))/9.;
     float spec=pow(max(0.,dot(norm,normalize(key+eye))),16.)*sun;
     float rim=pow(1.-max(dot(eye,norm),0.),3.);
+    float back=max(dot(norm,normalize(vec3(-.25,.48,-.84))),0.);
+    float ambient=(.26+.08*(.5+.5*norm.y))*mix(.74,1.,sun);
     // The catalog swatches are display RGB. Apply studio irradiance in linear light.
-    float light=.28+.09*(.5+.5*norm.y)+.59*diffuse*mix(.25,1.,sun)+.12*fill;
+    float light=ambient+.58*diffuse*mix(.25,1.,sun)+.16*fill+.16*back;
     vec3 col;
     if(mode==1) {
-        float gray=.68*pow(light,1./2.2)+.015*spec+.009*rim;
-        col=vec3(gray);
+        float softKey=smoothstep(-.22,.86,dot(norm,key));
+        float matteLight=(.58+.25*softKey+.11*fill+.05*back)*mix(.91,1.,sun);
+        col=vec3(.84,.815,.79)*sqrt(matteLight)+.006*rim;
     } else if(mode==3) {
         float t=clamp(strain/.30,0.,1.);
         vec3 cold=vec3(.048,.40,.39), middle=vec3(.98,.71,.26), hot=vec3(.79,.16,.16);
@@ -126,7 +129,7 @@ void main() {
         }
         if(tailoring.x==1. && yarn.y<1.27)
             col*=1.-.075*stitch(edge-.017)-.050*stitch(edge-.020);
-        if(tailoring.x>=2.) {
+        if(tailoring.x==2. || tailoring.x==3.) {
             float depth=tailoring.y-yarn.y;
             float waistband=1.-smoothstep(.03,.034,depth);
             float seams=stitch(depth-.033);
@@ -146,6 +149,15 @@ void main() {
                 if(depth>.60) col*=1.-.12*(1.-smoothstep(.025,.030,edge));
             }
             col*=1.-.07*waistband-.18*min(seams,1.);
+        }
+        if(tailoring.x==4.) {
+            float depth=tailoring.y-yarn.y;
+            float band=1.-smoothstep(.028,.032,depth);
+            col*=1.-.10*band-.08*stitch(depth-.031);
+        }
+        if(tailoring.x==5. && yarn.z<-.025) {
+            float backSeam=yarn.y-tailoring.y-.19*abs(yarn.x);
+            col*=1.-.12*stitch(backSeam)*(1.-smoothstep(.070,.096,abs(yarn.x)));
         }
     }
     outColor=vec4(col,1);
@@ -344,10 +356,17 @@ void Renderer::drawGarment(const Simulation& sim) {
         }
     }
     const auto& item=items.at(sim.item);
-    float textureStrength=std::string_view(item.productId)=="427391" ? 1.f : (item.bottom() ? .30f : .14f);
-    const float cut=item.tee() ? 1.f : item.cut==Cut::Joggers ? 3.f : item.pants() ? 2.f : 0.f;
+    const std::string_view product=item.productId;
+    float textureStrength=product=="427391" ? 1.f : product=="434168" ? .40f : item.bottom() ? .30f : .14f;
+    const bool racerback=product=="433735";
+    const float cut=item.tee() ? 1.f : item.cut==Cut::Joggers ? 3.f : item.pants() ? 2.f :
+                    item.cut==Cut::Skirt ? 4.f : racerback ? 5.f : 0.f;
     const float hipRadius=item.pants()?std::abs(sim.restPositions[Simulation::trouserHipRow*Simulation::ringSize].x):0.f;
-    glUniform3f(tailoringLoc,cut,sim.restPositions.front().y,hipRadius);
+    constexpr int lastRing=Simulation::panelRows*Simulation::ringSize;
+    const float seamY=item.cut==Cut::Skirt ? sim.restPositions[lastRing].y :
+                      racerback ? sim.restPositions[lastRing+3*Simulation::ringSize/4].y-.090f :
+                      sim.restPositions.front().y;
+    glUniform3f(tailoringLoc,cut,seamY,hipRadius);
     glUniform4f(colorLoc,item.color.x,item.color.y,item.color.z,textureStrength);
     upload(sim.cloth,&sim,&trim);
 }

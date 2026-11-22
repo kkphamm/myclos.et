@@ -3,6 +3,7 @@
 
 namespace closet {
 struct Ui;
+void captureFitReport(const std::filesystem::path& directory,bool heroes);
 
 class CaptureReplay {
 public:

@@ -42,6 +42,7 @@ void runFittingRoom(GLFWwindow* window,const std::filesystem::path& captures) {
     Ui ui;
     auto avatar=bodyMesh(ui.body,ui.masculine);
     auto contact=fittingContact(avatar,ui.masculine);
+    auto display=displayBodyMesh(avatar,ui.masculine,ui.body.height);
     std::array<std::optional<Simulation>,2> outfit;
     DrapeKey model{ui.body,0,ui.masculine};
     ui.reset=true;
@@ -69,6 +70,7 @@ void runFittingRoom(GLFWwindow* window,const std::filesystem::path& captures) {
         if(formChanged){
             avatar=bodyMesh(ui.body,ui.masculine);
             contact=fittingContact(avatar,ui.masculine);
+            display=displayBodyMesh(avatar,ui.masculine,ui.body.height);
             model=wantedModel;
         }
         auto matchesPreview=[&](const Simulation& sim){
@@ -112,7 +114,7 @@ void runFittingRoom(GLFWwindow* window,const std::filesystem::path& captures) {
                 if(ui.store && !card.target.texture){
                     Camera camera{};
                     camera.productView=true;
-                    renderer.draw(card.target,880,500,avatar,ui.body.height,&*card.sim,nullptr,camera,false);
+                    renderer.draw(card.target,880,500,display,ui.body.height,&*card.sim,nullptr,camera,false);
                 }
                 thumbs[i]=card.target.texture;
                 ++ready;
@@ -146,7 +148,7 @@ void runFittingRoom(GLFWwindow* window,const std::filesystem::path& captures) {
             auto layer=[&](int slot) -> const Simulation* { return outfit[slot] ? &*outfit[slot] : nullptr; };
             renderer.draw(scene,std::max(1,int(size[0]*io.DisplayFramebufferScale.x)),
                            std::max(1,int(size[1]*io.DisplayFramebufferScale.y)),
-                           avatar,ui.body.height,layer(ui.slot),layer(1-ui.slot),{ui.yaw,ui.pitch,ui.zoom},ui.heatmap);
+                           display,ui.body.height,layer(ui.slot),layer(1-ui.slot),{ui.yaw,ui.pitch,ui.zoom},ui.heatmap);
         }
         drawUi(ui,scene.texture,thumbs);
         ImGui::Render();

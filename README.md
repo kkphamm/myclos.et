@@ -57,6 +57,26 @@ build/mycloset_fit_check --outfits > evidence/outfit-check.csv
 build/mycloset.app/Contents/MacOS/mycloset --capture evidence
 ```
 
+The fit report records the three medium outfits on each of the six fitting presets. It writes one CSV row per garment layer and captures front, side, and back views of the same simulated state with wind off.
+
+```sh
+mkdir -p build/fit-run
+build/mycloset.app/Contents/MacOS/mycloset --fit-report build/fit-run > build/fit-run/fit-report.csv
+```
+
+Use `--hero-report` with a separate output directory for the four reference outfits. It captures the men's DRY-EX tank with Narrow Skirt, the DRY-EX tee, the Ribbed Tank with Mermaid Skirt, and the AIRism Seamless Tank on the Tall feminine preset.
+
+The body tape measures the convex circumference of a horizontal mesh section and excludes the arms. High hip is midway between the waist and hip tape heights. The hem and chest measurements follow the cloth's actual edge and chest row. Shoulder gap is the maximum vertical clearance at the garment's supports. Minimum cloth clearance measures cloth vertices against body triangles. `nan` marks a measurement that does not apply or has no body section at that height. The mesh intersection tests also check cloth triangles between vertices.
+
+The report includes the high-point shoulder to hem tape on the rest pattern and the draped top. Layered settling is measured after both garments and their mutual contact are resolved. The Mermaid waistband height is measured against the body's waist tape level.
+
+### Fit parameters
+
+- Set the tank strap widths and neckline depths, the AIRism hem rise, and the Mermaid flare and gathers in [`draftPanels`](src/simulation/pattern.cpp). The Mermaid skirt widens below the hip.
+- Set sleeve ease and jogger rise, taper, and cuff gathers in [`limb_patterns.cpp`](src/simulation/limb_patterns.cpp).
+- Set lateral stretch and waistband strain limits in the spring setup in [`pattern.cpp`](src/simulation/pattern.cpp). Set damping and shoulder support release in [`cloth.cpp`](src/simulation/cloth.cpp).
+- Keep the rest measurements in the [UNIQLO catalog](CATALOG.md). Fitting the waistband changes the worn circumference at the measured waist.
+
 The CPU runner can also be built independently.
 
 ```sh
@@ -68,7 +88,7 @@ build-headless/mycloset_bench build-headless/benchmark.csv
 
 ## What runs
 
-- Both fitting figures stand symmetrically with level shoulders and hips. They have a matte gray finish, a featureless head, and smoothly rounded hands and feet. The solver builds its collision field from the displayed triangles. It fits the side panels into the space between the arm and torso and seats the straps on the shoulders. Body and cloth cast shadows on one another as the figure rotates. Measurement edits carry the cloth and its velocity onto the changed body.
+- Both fitting figures stand in a symmetrical A-pose with level shoulders and hips. The viewer renders the full HM08 body and the solver builds its collision field from a lower-resolution proxy. It fits the side panels into the space between the arm and torso and seats the straps on the shoulders. Body and cloth cast shadows on one another as the figure rotates. Measurement edits carry the cloth and its velocity onto the changed body. [Fitting models](assets/AVATAR.md)
 - Two garment panels share side-seam particles. The tank openings, strap widths and hem curves follow the individual styles. The bust ring measures twice the published flat chest width. Skirts use the published waist, hip and length. The T-shirts have sleeves sewn into both armholes. Dropped shoulders consume part of the published center-back-to-cuff length. Top lengths follow the fabric surface from back collar to hem. Trousers split at a shared crotch and each inside leg seam uses the published inseam. The straight ankle trousers have a pressed leg crease, the wide trousers carry more width through the knee, and the joggers gather above their cuffs. Tests check all 33 patterns against the product charts.
 - The CPU solver advances at 120 Hz. Hooke springs apply structural, shear, and bending forces to equal-mass particles. Damped Verlet integration is followed by five strain-limiting and body-contact passes. Tension-only constraints carry the fabric’s weight to its supports. The solver resolves contact at garment vertices, along edges, and at triangle centers. Friction damps fabric sliding on the mannequin. A spatial hash handles particle self-contact. Wind pressure depends on triangle orientation and varies with deterministic time-based gusts.
 - The heatmap averages positive relative elongation on incident surface edges. It represents simulated strain. Point-contact approximations and attachment choices affect the readings, especially near straps and waistbands. Large deformations can still produce triangle intersections.
@@ -77,13 +97,15 @@ build-headless/mycloset_bench build-headless/benchmark.csv
 
 ## Read the experiment
 
+The CSVs in `evidence/` describe the original prototype. Use the fit report command to capture the current measurements and renders.
+
 [benchmark.csv](evidence/benchmark.csv) contains the Random Ribbed Tank Top on Classic, Compact, and Tall bodies (indices 0–2) in S/M/L, and a waist-edit time series within the Classic/M run. The waist moves from 74 to 90 cm over one simulated second and holds for another second. Each series sample covers ten steps. The simulator uses no random generator for these cases.
 
 Static cases settle when RMS vertex speed stays below 1 cm/s for 60 consecutive steps, with a six-second simulated-time cap. The CSV labels timeouts, reports mean wall-clock milliseconds per solver step, and records the nearest-rank p95 of vertex stretch. The regional p95 restricts this measure to cloth vertices between 55% and 74% of the current stature, excluding the shoulder attachments. To inspect a deliberately tight fit, use Tall with chest 112, waist 100, hips 120, and size S. Compare with L from the same view. The penetration columns measure remaining cloth vertices inside the collision field after projection, with a 0.01 mm reporting tolerance.
 
 Independent measurements on the visible masculine Classic form give a 98.93 cm chest, 82.02 cm waist and 98.33 cm seat against settings of 99, 82 and 98 cm. On that form, the medium oversized tee is approximately 5 cm wider across the front at the chest than the regular medium tee. The medium wide trouser leg is about 18.3 cm across at knee height, compared with 14.8 cm for the ankle trouser. [Measured forms](evidence/form-measurements.csv) · [Silhouette and chart checks](tools/bench.cpp)
 
-The independent fit check intersects garment triangles with the displayed body triangles and checks for enclosed garment vertices. All 198 static fits cleared the body across eleven styles in S/M/L on three presets for each model. Of these, 193 settled within six simulated seconds and five reached the time cap. All 230 frames sampled during measurement edits and wind also cleared the body. An earlier six-style build intersected the figure in 77 of 108 static fits. [Earlier fit comparison](evidence/fit-comparison.jpg) · [Static fits](evidence/fit-check.csv) · [Live measurement edits](evidence/fit-edits.csv)
+The independent fit check intersects garment triangles with the physical body mesh and checks for enclosed garment vertices. The archived prototype cleared 198 static fits across eleven styles in S/M/L on three presets for each model. Of these, 193 settled within six simulated seconds and five reached the time cap. All 230 archived frames sampled during measurement edits and wind also cleared the body. [Earlier fit comparison](evidence/fit-comparison.jpg) · [Static fits](evidence/fit-check.csv) · [Live measurement edits](evidence/fit-edits.csv)
 
 The outfit check exercises all 30 top–bottom combinations on both figures with independent clothing sizes. It checks both layers against the body and each other after dressing, under wind, and during a waist adjustment. [Outfit results](evidence/outfit-check.csv)
 

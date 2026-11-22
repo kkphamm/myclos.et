@@ -1,4 +1,5 @@
 #include "viewer/fitting_room.hpp"
+#include "viewer/capture.hpp"
 #include "ui/ui.hpp"
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -11,9 +12,11 @@
 
 int main(int argc,char** argv) {
     std::filesystem::path captures;
-    if(argc==3 && std::string(argv[1])=="--capture") captures=argv[2];
+    const bool heroes=argc==3 && std::string(argv[1])=="--hero-report";
+    const bool fitReport=heroes || (argc==3 && std::string(argv[1])=="--fit-report");
+    if(fitReport || (argc==3 && std::string(argv[1])=="--capture")) captures=argv[2];
     else if(argc>1 && std::string(argv[1]).rfind("-psn_",0)!=0){
-        std::cerr<<"Usage: mycloset [--capture DIRECTORY]\n";return 2;
+        std::cerr<<"Usage: mycloset [--capture DIRECTORY | --hero-report DIRECTORY | --fit-report DIRECTORY]\n";return 2;
     }
     glfwSetErrorCallback([](int,const char* error){std::cerr<<error<<'\n';});
     if(!captures.empty()) glfwInitHint(GLFW_COCOA_MENUBAR,GLFW_FALSE);
@@ -33,7 +36,10 @@ int main(int argc,char** argv) {
     ImGui_ImplGlfw_InitForOpenGL(window,true);
     ImGui_ImplOpenGL3_Init("#version 330 core");
     int status=0;
-    try{closet::runFittingRoom(window,captures);}
+    try{
+        if(fitReport) closet::captureFitReport(captures,heroes);
+        else closet::runFittingRoom(window,captures);
+    }
     catch(const std::exception& e){std::cerr<<"myclos.et: "<<e.what()<<'\n';status=1;}
     ImGui_ImplOpenGL3_Shutdown();ImGui_ImplGlfw_Shutdown();ImGui::DestroyContext();
     glfwDestroyWindow(window);glfwTerminate();return status;

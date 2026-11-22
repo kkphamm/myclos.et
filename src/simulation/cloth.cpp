@@ -4,15 +4,18 @@
 #include <algorithm>
 #include <cstdint>
 #include <stdexcept>
+#include <string_view>
 
 namespace closet {
 using namespace cloth_math;
 
 Vec3 Simulation::projectCloth(Vec3 p,float gap) const {
-    if(items[item].pants() && p.y<.15f) {
-        p.y=std::max(p.y,contact.floorHeight(p)+gap);
+    const auto& design=items[item];
+    if(design.pants() && p.y<.15f) {
+        const float ankle=design.cut==Cut::Joggers?.00032f*body.height:0.f;
+        p.y=std::max(p.y,std::max(ankle,contact.floorHeight(p))+gap);
         p=contact.project(p,gap);
-        p.y=std::max(p.y,contact.floorHeight(p)+gap);
+        p.y=std::max(p.y,std::max(ankle,contact.floorHeight(p))+gap);
         return p;
     }
     return contact.project(p,gap);
@@ -23,11 +26,18 @@ void Simulation::updateBody(Body b) {
     updateBody(b,fittingContact(bodyMesh(b,masculine),masculine));
 }
 
+float Simulation::supportOffset(Body form,const BodyContact& fitted) const {
+    const auto& design=items[item];
+    return design.elasticWaist()?fitted.waistHeight()-1.70f*design.supportFraction():
+                                (form.height-170.f)*.01f*design.supportFraction();
+}
+
 void Simulation::updateBody(Body b,const BodyContact& fitted) {
-    float lift=(b.height-body.height)*.01f*items[item].supportFraction();
+    const float beforeOffset=supportOffset(body,contact);
+    const float lift=supportOffset(b,fitted)-beforeOffset;
     const auto& design=items[item];
     for(const auto& band:limbBands) {
-        Vec3 base=band.center; base.y+=(body.height-170.f)*.01f*design.supportFraction();
+        Vec3 base=band.center; base.y+=beforeOffset;
         Vec3 before=contact.limbCenter(base.y,band.side,!design.pants(),base);
         Vec3 after=fitted.limbCenter(base.y+lift,band.side,!design.pants(),base);
         Vec3 delta{after.x-before.x,0,after.z-before.z};
@@ -49,16 +59,20 @@ void Simulation::updateBody(Body b,const BodyContact& fitted) {
 
 void Simulation::updateAnchors() {
     const auto& design=items[item];
+    const float offset=supportOffset(body,contact);
     for(int i:anchorIndices) {
+        if(!anchored[i]) continue;
         Vec3 p=restPositions[i];
         if(design.bottom()) {
-            p.y+=.01f*design.supportFraction()*(body.height-170.f);
-            p=contact.dress(p,clearance);
+            p.y+=offset;
+            p=contact.dress(p,clearance,0,design.elasticWaist());
+            p=contact.project(p,clearance);
         } else {
-            p.x*=body.shoulder/40.f;
+            if(design.tee()) p.x*=body.shoulder/40.f;
+            else p.x+=std::copysign(1.f,p.x)*.002f*(body.shoulder-40.f);
             p.y=contact.shoulderHeight(p.x,p.z,.0089f*body.height,.0082f*body.height)+clearance;
         }
-        cloth.positions[i]=previous[i]=contact.project(p,clearance);
+        cloth.positions[i]=previous[i]=p;
     }
 }
 
@@ -93,6 +107,9 @@ void Simulation::step(float dt,float wind,float direction) {
         return;
     }
     auto& p=cloth.positions;
+    constexpr double supportRelease=.65;
+    if(elapsed<supportRelease && elapsed+dt>=supportRelease)
+        for(int i:temporarySupports) anchored[i]=0;
     std::fill(forces.begin(),forces.end(),Vec3{0,-9.81f,0});
     // Hooke acceleration for equal particle masses; k/m is 2100 s^-2 times each spring weight.
     for(const auto& s:springs) {
@@ -116,18 +133,19 @@ void Simulation::step(float dt,float wind,float direction) {
             for(int i:tri) forces[i]=forces[i]+acceleration;
         }
     }
-    float damping=std::exp(-4.f*dt);
+    const float damping=std::exp(-8.f*dt);
     for(int i=0;i<int(p.size());++i) {
         if(anchored[i]) continue;
         Vec3 before=p[i]; p[i]=p[i]+(p[i]-previous[i])*damping+forces[i]*(dt*dt); previous[i]=before;
     }
+    const float calmRelaxation=std::string_view(items[item].productId)=="437410"?.20f:.15f;
     // Hooke springs act throughout the elastic range; five strain-limiting passes stabilize larger excursions.
     for(int pass=0;pass<5;++pass) {
         for(const auto& s:springs){
             Vec3 d=p[s.b]-p[s.a]; float len=length(d);
             if(len<1e-8f) continue;
             float error=len-s.rest;
-            float band=s.rest*(s.surface?.015f:.04f);
+            float band=s.rest*(s.surface?s.strainLimit:.04f);
             float excess=error-std::clamp(error,-band,band);
             auto corr=d*(s.stiffness*excess/len*(anchored[s.a]||anchored[s.b]?1.f:.5f));
             if(!anchored[s.a]) p[s.a]=p[s.a]+corr;
@@ -140,37 +158,78 @@ void Simulation::step(float dt,float wind,float direction) {
                 p[tether.particle]=p[tether.anchor]+offset*(tether.length/std::sqrt(squared));
         }
         if(pass==3) selfContact();
-        if(pass==4) {
+        if(pass==4 && !wind) {
+            // Dampen competing constraints before the final surface contact pass.
+            const float relax=elapsed<.35?.62f:calmRelaxation;
+            for(int i=0;i<int(p.size());++i) if(!anchored[i]) {
+                Vec3 delta=p[i]-previous[i];
+                const Vec3 touch=projectCloth(previous[i],clearance+.0005f)-previous[i];
+                if(dot(delta,delta)<.0016f*.0016f && dot(touch,touch)>1e-10f) delta={};
+                p[i]=previous[i]+delta*relax;
+            }
+        }
+        if(pass>=3) {
+            // Reserve interpolation error between the points sampled along a surface primitive.
+            constexpr float surfaceGap=clearance+.0023f;
             // An edge can cut the shoulder cap even when both endpoints clear it.
             for(const auto& s:springs) if(s.surface) {
                 // A small armhole can stretch over the axilla and needs samples along its worn length.
                 const float span=std::max(s.rest,length(p[s.a]-p[s.b]));
-                int intervals=std::clamp(int(std::ceil(span/.009f)),3,12);
+                int intervals=std::clamp(int(std::ceil(span/.007f)),3,18);
                 for(int k=1;k<intervals;++k) {
                     float t=float(k)/intervals;
                     Vec3 sample=p[s.a]*(1-t)+p[s.b]*t;
-                    Vec3 correction=projectCloth(sample,clearance)-sample;
+                    Vec3 correction=projectCloth(sample,surfaceGap)-sample;
                     float a=anchored[s.a]?0.f:1-t,b=anchored[s.b]?0.f:t;
-                    float weight=a*a+b*b;
-                    if(weight==0 || dot(correction,correction)<1e-12f) continue;
+                    const float distance=length(correction);
+                    if(distance<1e-6f) continue;
+                    correction=correction*std::min(1.f,.004f/distance);
+                    // A sample next to a seat cannot move the free endpoint by a large lever arm.
+                    const float weight=std::max(.25f,a*a+b*b);
                     p[s.a]=p[s.a]+correction*(a/weight);
                     p[s.b]=p[s.b]+correction*(b/weight);
                 }
             }
             for(auto f:cloth.triangles) {
                 Vec3 center=(p[f[0]]+p[f[1]]+p[f[2]])*(1.f/3.f);
-                Vec3 correction=projectCloth(center,clearance)-center;
+                Vec3 correction=projectCloth(center,surfaceGap)-center;
                 int free=3-anchored[f[0]]-anchored[f[1]]-anchored[f[2]];
-                if(free && dot(correction,correction)>1e-12f)
-                    for(int i:f) if(!anchored[i]) p[i]=p[i]+correction*(3.f/free);
+                const float distance=length(correction);
+                if(free && distance>1e-6f) {
+                    const Vec3 push=correction*std::min(3.f/free,.006f/distance);
+                    for(int i:f) if(!anchored[i]) p[i]=p[i]+push;
+                }
             }
         }
         for(int i=0;i<int(p.size());++i) if(!anchored[i]) p[i]=projectCloth(p[i],clearance);
     }
-    elapsed+=dt; rmsSpeed=0; insideCount=0; maxPenetration=0;
-    const float slip=std::exp(-42.f*dt);
+    // Keep the upper panel below the shoulder when contact pushes from the armpit.
+    const float support=.01f*(body.height-170.f)*items[item].supportFraction();
+    float reseatMotion=0;
+    for(int i:armholePanels) {
+        if(anchored[i]) continue;
+        Vec3 fit=restPositions[i];
+        fit.y+=support;
+        const float shoulder=.00845f*body.height-.55f*std::max(0.f,std::abs(fit.x)-.105f);
+        const float ceiling=std::min(fit.y+.015f,shoulder);
+        const float side=i%ringSize<ringSize/2?1.f:-1.f;
+        const float depth=side*fit.z+.023f+.005f*(panelRows-i/ringSize);
+        if(p[i].y<=ceiling && side*p[i].z<=depth) continue;
+        Vec3 seated=p[i];
+        seated.x=std::clamp(seated.x,fit.x-.024f,fit.x+.024f);
+        seated.y=std::min(seated.y,ceiling);
+        seated.z=side*std::min(side*seated.z,depth);
+        seated.z=contact.panelDepth(seated,side,clearance+.0015f);
+        p[i]=projectCloth(seated,clearance);
+        const Vec3 displacement=p[i]-previous[i];
+        reseatMotion+=dot(displacement,displacement);
+        previous[i]=p[i];
+    }
+    const float priorSpeed=rmsSpeed;
+    elapsed+=dt; rmsSpeed=reseatMotion; insideCount=0; maxPenetration=0;
+    const float slip=std::exp(-84.f*dt);
     for(int i=0;i<int(p.size());++i) {
-        Vec3 v=p[i]-previous[i]; rmsSpeed+=dot(v,v);
+        Vec3 v=p[i]-previous[i];
         Vec3 touch=projectCloth(p[i],clearance+.0005f)-p[i];
         float gap=length(touch);
         if(gap>1e-5f) {
@@ -181,8 +240,11 @@ void Simulation::step(float dt,float wind,float direction) {
             float depth=length(contact.project(p[i],0)-p[i]);
             if(depth>1e-5f) { ++insideCount; maxPenetration=std::max(maxPenetration,depth); }
         }
+        rmsSpeed+=dot(v,v);
     }
     rmsSpeed=std::sqrt(rmsSpeed/p.size())/dt;
+    if(!wind && rmsSpeed<priorSpeed && priorSpeed>earlierSpeed) previous=p;
+    earlierSpeed=priorSpeed;
     updateStretch();
 }
 

@@ -89,15 +89,16 @@ struct Triangle {
 
 struct BodyContact::Data {
     Vec3 origin;
-    float cell, invCell;
+    float cell, invCell, waist;
     int nx,ny,nz;
     std::vector<float> distance;
     std::vector<float> instep;
     std::vector<Triangle> triangles;
+    std::vector<Triangle> shoulderTriangles;
     std::vector<Section> sections;
     std::vector<std::array<BoundsXZ,4>> limbs;
 
-    Data(const Mesh& body,const std::vector<std::array<float,2>>* weights) {
+    Data(const Mesh& body,const std::vector<std::array<float,2>>* weights,const Mesh* fittedSurface,float naturalWaist) {
         if(body.positions.empty()||body.triangles.empty()) throw std::invalid_argument("Empty fitting figure");
         if(weights && weights->size()!=body.positions.size()) throw std::invalid_argument("Invalid fitting figure weights");
         Vec3 lo=body.positions.front(),hi=lo;
@@ -105,7 +106,14 @@ struct BodyContact::Data {
             lo={std::min(lo.x,v.x),std::min(lo.y,v.y),std::min(lo.z,v.z)};
             hi={std::max(hi.x,v.x),std::max(hi.y,v.y),std::max(hi.z,v.z)};
         }
-        cell=std::max({hi.x-lo.x,hi.y-lo.y,hi.z-lo.z,.01f})/156.f;
+        waist=naturalWaist>0?naturalWaist:mix(lo.y,hi.y,.61f);
+        if(fittedSurface) for(auto f:fittedSurface->triangles) {
+            const auto& p=fittedSurface->positions;
+            const float y=(p[f[0]].y+p[f[1]].y+p[f[2]].y)/3;
+            if(y>mix(lo.y,hi.y,.72f) && y<mix(lo.y,hi.y,.91f))
+                shoulderTriangles.emplace_back(p[f[0]],p[f[1]],p[f[2]]);
+        }
+        cell=std::max({hi.x-lo.x,hi.y-lo.y,hi.z-lo.z,.01f})/192.f;
         invCell=1.f/cell;
         // An off-center lattice avoids ray coincidences at symmetric mesh vertices and poles.
         origin={lo.x-4.317f*cell,lo.y-4.583f*cell,lo.z-4.143f*cell};
@@ -216,8 +224,11 @@ struct BodyContact::Data {
     }
 };
 
-BodyContact::BodyContact(const Mesh& body,const std::vector<std::array<float,2>>* weights)
-    : data(std::make_shared<Data>(body,weights)) {}
+BodyContact::BodyContact(const Mesh& body,const std::vector<std::array<float,2>>* weights,const Mesh* fittedSurface,
+                         float naturalWaist)
+    : data(std::make_shared<Data>(body,weights,fittedSurface,naturalWaist)) {}
+
+float BodyContact::waistHeight() const { return data->waist; }
 
 Vec3 BodyContact::limbCenter(float y,int side,bool arm,Vec3 fallback) const {
     const float row=(y-data->origin.y)*data->invCell;
@@ -225,6 +236,14 @@ Vec3 BodyContact::limbCenter(float y,int side,bool arm,Vec3 fallback) const {
     const int i=int(row), limb=2*int(arm)+int(side>0);
     Vec3 a=data->limbs[i][limb].center(fallback), b=data->limbs[i+1][limb].center(fallback);
     return {mix(a.x,b.x,row-i),y,mix(a.z,b.z,row-i)};
+}
+
+float BodyContact::armGirth(float y,int side) const {
+    const int row=std::clamp(int(std::lround((y-data->origin.y)*data->invCell)),0,data->ny-1);
+    const auto& arm=data->limbs[row][2+int(side>0)];
+    if(arm.minX>=arm.maxX || arm.minZ>=arm.maxZ) return 0;
+    const float a=.433f*(arm.maxX-arm.minX),b=.5f*(arm.maxZ-arm.minZ);
+    return .5f*tau*(3*(a+b)-std::sqrt((3*a+b)*(a+3*b)));
 }
 
 float BodyContact::floorHeight(Vec3 p) const {
@@ -235,7 +254,7 @@ float BodyContact::floorHeight(Vec3 p) const {
     return mix(mix(h[0],h[1],u-x),mix(h[data->nx],h[data->nx+1],u-x),v-z);
 }
 
-Vec3 BodyContact::dress(Vec3 p,float clearance,float armGap) const {
+Vec3 BodyContact::dress(Vec3 p,float clearance,float armGap,bool snug) const {
     float y=(p.y-data->origin.y)*data->invCell;
     if(y<0 || y>=data->ny-1) return p;
     int row=int(y);
@@ -264,7 +283,7 @@ Vec3 BodyContact::dress(Vec3 p,float clearance,float armGap) const {
             if(radius>0) r=mix(r,std::min(r,radius-2*clearance),weight*weight*(3-2*weight));
         }
     }
-    return offset(center,ray,std::max(r,skin+clearance));
+    return offset(center,ray,snug?skin+clearance:std::max(r,skin+clearance));
 }
 
 Vec3 BodyContact::project(Vec3 point,float clearance) const {
@@ -295,9 +314,20 @@ Vec3 BodyContact::project(Vec3 point,float clearance) const {
     }
 }
 
+float BodyContact::panelDepth(Vec3 point,float direction,float clearance) const {
+    Vec3 unused{};
+    for(int i=0;i<32;++i) {
+        const float distance=data->sample(point,unused);
+        if(distance>=clearance) break;
+        point.z+=direction*std::clamp(clearance-distance,.002f,.025f);
+    }
+    return point.z;
+}
+
 float BodyContact::shoulderHeight(float x,float z,float upperY,float fallbackY) const {
     float best=-std::numeric_limits<float>::infinity();
-    for(const auto& t:data->triangles) {
+    const auto& surface=data->shoulderTriangles.empty()?data->triangles:data->shoulderTriangles;
+    for(const auto& t:surface) {
         if(t.normal.y<=.0001f || x<std::min({t.a.x,t.b.x,t.c.x}) || x>std::max({t.a.x,t.b.x,t.c.x}) ||
            z<std::min({t.a.z,t.b.z,t.c.z}) || z>std::max({t.a.z,t.b.z,t.c.z})) continue;
         double den=double(t.ab.x)*(-t.ca.z)-double(t.ab.z)*(-t.ca.x);
@@ -309,5 +339,17 @@ float BodyContact::shoulderHeight(float x,float z,float upperY,float fallbackY) 
         if(y<=upperY) best=std::max(best,y);
     }
     return std::isfinite(best)?best:fallbackY;
+}
+
+float BodyContact::minVertexDistance(const Mesh& cloth) const {
+    float limit=std::numeric_limits<float>::infinity();
+    for(Vec3 p:cloth.positions) for(const auto& t:data->triangles) {
+        if(p.y-limit>std::max({t.a.y,t.b.y,t.c.y}) || p.y+limit<std::min({t.a.y,t.b.y,t.c.y}) ||
+           p.x-limit>std::max({t.a.x,t.b.x,t.c.x}) || p.x+limit<std::min({t.a.x,t.b.x,t.c.x}) ||
+           p.z-limit>std::max({t.a.z,t.b.z,t.c.z}) || p.z+limit<std::min({t.a.z,t.b.z,t.c.z})) continue;
+        const float d=std::sqrt(t.squaredDistance(p));
+        limit=std::min(limit,d);
+    }
+    return limit;
 }
 }

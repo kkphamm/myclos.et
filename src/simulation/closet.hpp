@@ -14,7 +14,7 @@ inline bool operator==(Body a,Body b) {
     return a.height==b.height && a.chest==b.chest && a.waist==b.waist && a.hips==b.hips && a.shoulder==b.shoulder;
 }
 Mesh bodyMesh(Body body, bool masculine=false);
-struct Spring { int a,b; float rest, stiffness; bool surface; };
+struct Spring { int a,b; float rest, stiffness; bool surface; float strainLimit=.015f; };
 struct Simulation {
     static constexpr int ringSize=56, panelRows=26, measureRow=17, trouserHipRow=5;
     Body body; int item, size; bool masculine; Mesh cloth;
@@ -25,14 +25,20 @@ struct Simulation {
     void step(float dt, float wind=0, float direction=0);
     void updateBody(Body b);
     void updateBody(Body b, const BodyContact& contact);
+    const std::vector<int>& supports() const { return anchorIndices; }
+    float backLengthCm(const std::vector<Vec3>& positions) const;
 private:
     friend void layerOutfit(Simulation& top, Simulation& bottom);
     BodyContact contact;
     struct Tether { int particle,anchor; float length; };
     std::vector<Tether> tethers;
     std::vector<int> anchorIndices, gridHeads, gridNext;
+    std::array<std::vector<int>,2> backTapes;
+    std::vector<int> armholePanels;
+    std::vector<int> temporarySupports;
     std::vector<unsigned char> anchored;
     std::vector<float> inverseEdgeCount;
+    float earlierSpeed=0;
     std::vector<Vec3> forces;
     struct LimbBand { int first,count,side; Vec3 center; };
     std::vector<LimbBand> limbBands;
@@ -41,6 +47,7 @@ private:
     void addQuad(int a,int b,int c,int d);
     void extendBand(std::vector<int>& edge,const std::vector<Vec3>& points,int side,Vec3 center);
     void addSleeve(std::vector<int> armhole,int side);
+    float supportOffset(Body form,const BodyContact& fitted) const;
     Vec3 projectCloth(Vec3 p,float clearance) const;
     void updateAnchors();
     void selfContact();

@@ -6,6 +6,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_library(cloth
   src/simulation/avatar.cpp
+  src/simulation/measurements.cpp
   src/simulation/pattern.cpp
   src/simulation/limb_patterns.cpp
   src/simulation/cloth.cpp

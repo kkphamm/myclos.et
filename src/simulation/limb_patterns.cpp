@@ -38,11 +38,14 @@ void Simulation::addSleeve(std::vector<int> hole,int side) {
     // UNIQLO measures from the center back, across half the shoulder, then down the outer sleeve.
     const float sleeve=.01f*(d.sleeveFromBackCm-d.shoulderCm*.5f);
     const float cuffDepth=.85f;
-    const float cuffFlat=.01f*d.chestFlatCm*(items[item].cut==Cut::OversizedTee?.42f:.40f);
-    const float radius=2*cuffFlat/ellipsePerimeter(n,cuffDepth);
-    Vec3 cuff{side*.242f,0,-.010f};
+    const float support=(.01f*body.height-1.70f)*items[item].supportFraction();
+    const float arm=contact.armGirth(shoulder.y-.86f*sleeve+support,side);
+    const float ease=items[item].cut==Cut::OversizedTee?.115f:.065f;
+    const float circumference=arm>0 ? arm+ease : .008f*d.chestFlatCm;
+    const float radius=circumference/ellipsePerimeter(n,cuffDepth);
+    Vec3 cuff{origin.x+side*.44f*sleeve,0,origin.z+.008f};
     float dx=cuff.x+side*radius-shoulder.x, dz=cuff.z-shoulder.z;
-    constexpr float tilt=.014f;
+    const float tilt=.26f*radius;
     cuff.y=shoulder.y-std::sqrt(std::max(0.f,sleeve*sleeve-dx*dx-dz*dz))-tilt;
     for(int r=1;r<=9;++r) {
         float t=r/9.f;
@@ -66,7 +69,8 @@ void Simulation::draftTrousers() {
     const float waistY=1.70f*design.supportFraction();
     // These charts omit rise. Draft it from the hip ease and hold it fixed when the wearer changes.
     const bool wide=design.cut==Cut::WideTrousers, jogger=design.cut==Cut::Joggers;
-    const float rise=(wide?.251f:(jogger?.218f:.227f))+.14f*(hip-waist);
+    const float rise=jogger ? std::max(.21f,contact.waistHeight()-.0047f*body.height+.024f) :
+                             (wide?.251f:.227f)+.14f*(hip-waist);
     const float crotchY=waistY-rise;
     const float legDepth=wide?.86f:(jogger?.98f:1.03f);
     constexpr float hipDepth=.74f;

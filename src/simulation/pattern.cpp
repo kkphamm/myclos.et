@@ -11,13 +11,14 @@ using namespace cloth_math;
 namespace {
 constexpr int perimeter=Simulation::ringSize, halfCols=perimeter/2, rows=Simulation::panelRows;
 int id(int row,int col) { return row*perimeter+(col+perimeter)%perimeter; }
-float tankTop(float sideAngle,float neckline,float underarm,int outer,int inner) {
+float tankTop(float sideAngle,float neckline,float underarm,float shoulder,int outer,int inner,bool racerback) {
     // sideAngle runs from the side seam to the center of one pattern panel.
     const float outerAngle=2.f*outer/halfCols,innerAngle=2.f*inner/halfCols;
-    constexpr float outerY=.823f, innerY=.832f;
+    const float outerY=shoulder-.012f,innerY=shoulder;
     if(sideAngle<outerAngle) {
         float t=sideAngle/outerAngle;
-        return underarm+(outerY-underarm)*t*t*(3-2*t);
+        const float arc=t*t;
+        return blend(underarm,outerY,racerback?arc*arc:arc);
     }
     if(sideAngle<=innerAngle) return outerY+(innerY-outerY)*(sideAngle-outerAngle)/(innerAngle-outerAngle);
     float t=std::cos(sideAngle*pi*.5f)/std::cos(innerAngle*pi*.5f);
@@ -34,18 +35,27 @@ Simulation::Simulation(Body b,int itemIndex,int sizeIndex,bool male,const BodyCo
     if(item<0||item>=int(items.size())||size<0||size>2) throw std::invalid_argument("Invalid garment or size");
     if(items[item].pants()) draftTrousers();
     else draftPanels();
+    const auto& design=items[item];
+    const std::string_view product=design.productId;
+    const bool seamless=product=="433735",dryEx=product=="437410" || product=="433399";
     auto braces=std::move(springs);
     std::set<std::pair<int,int>> edges;
     auto spring=[&](int a,int b,float k,bool surface) {
         if(a>b) std::swap(a,b);
         if(!edges.emplace(a,b).second) return;
-        springs.push_back({a,b,length(cloth.positions[b]-cloth.positions[a]),k,surface});
+        const bool weft=surface && !design.bottom() && a/perimeter==b/perimeter && b<(rows+1)*perimeter;
+        const bool waistband=surface && design.elasticWaist() && a/perimeter==b/perimeter &&
+            (design.pants()?b<2*perimeter:a>=(rows-1)*perimeter);
+        const float limit=waistband?.45f:weft && seamless?.20f:weft && dryEx?.055f:.015f;
+        if(weft && seamless) k=.41f;
+        if(weft && dryEx) k=.68f;
+        if(waistband) k=.44f;
+        springs.push_back({a,b,length(cloth.positions[b]-cloth.positions[a]),k,surface,limit});
     };
     for(auto tri:cloth.triangles) for(int k=0;k<3;++k) spring(tri[k],tri[(k+1)%3],.80f,true);
     for(auto s:braces) spring(s.a,s.b,s.stiffness,false);
     restPositions=cloth.positions;
-    const auto& design=items[item];
-    const float offset=(b.height-170.f)*.01f*design.supportFraction();
+    const float offset=supportOffset(b,contact);
     std::vector<bool> onLimb(cloth.positions.size());
     const float hemY=design.pants()?limbBands.back().center.y+offset:0;
     for(const auto& band:limbBands) {
@@ -65,7 +75,8 @@ Simulation::Simulation(Body b,int itemIndex,int sizeIndex,bool male,const BodyCo
     }
     for(size_t j=0;j<cloth.positions.size();++j) {
         Vec3& p=cloth.positions[j]; p.y+=offset;
-        if(!onLimb[j] && (design.bottom() || p.y<body.height*.00790f) &&
+        const bool fittedPanel=design.cut==Cut::Tank && j/perimeter>measureRow;
+        if(!onLimb[j] && !fittedPanel && (design.bottom() || p.y<body.height*.00790f) &&
            (!design.pants() || p.y>body.height*.00505f)) p=contact.dress(p,clearance);
         p=projectCloth(p,clearance);
     }
@@ -88,6 +99,11 @@ Simulation::Simulation(Body b,int itemIndex,int sizeIndex,bool male,const BodyCo
             if(anchor>=0) tethers.push_back({i,anchor,limit});
         }
     }
+    const float sewn=design.tee()?.980f:seamless?.970f:.981f;
+    for(const auto& tape:backTapes) for(size_t k=1;k<tape.size();++k) {
+        const int a=tape[k-1],b=tape[k];
+        if(!anchored[b]) tethers.push_back({b,a,sewn*length(restPositions[b]-restPositions[a])});
+    }
     stretch.resize(previous.size()); forces.resize(previous.size());
     inverseEdgeCount.resize(previous.size());
     for(const auto& s:springs) if(s.surface){ ++inverseEdgeCount[s.a]; ++inverseEdgeCount[s.b]; }
@@ -101,6 +117,13 @@ void Simulation::addQuad(int a,int b,int c,int d) {
     cloth.triangles.push_back({b,c,d});
 }
 
+float Simulation::backLengthCm(const std::vector<Vec3>& points) const {
+    float tape=0;
+    for(const auto& path:backTapes)
+        for(size_t i=1;i<path.size();++i) tape+=length(points[path[i]]-points[path[i-1]]);
+    return tape*50;
+}
+
 void Simulation::draftPanels() {
     constexpr float patternHeight=1.70f;
     const Item& design=items[item];
@@ -108,12 +131,17 @@ void Simulation::draftPanels() {
     const float lengthM=.01f*dims.lengthCm;
     constexpr int bustRow=measureRow, hipRow=measureRow;
     const bool tee=design.tee(), oversized=design.cut==Cut::OversizedTee;
-    const float bustHeight=design.mens && design.cut==Cut::Tank?.661f:.682f;
+    const float bustHeight=oversized || (design.mens && design.cut==Cut::Tank) ? .661f : .682f;
     constexpr float waistHeight=.610f;
-    const float panelDepth=oversized?.59f:(tee?.66f:.72f);
+    const float panelDepth=oversized?.57f:(tee?.66f:.72f);
     const float ellipse=ellipsePerimeter(perimeter,panelDepth);
-    const float neckHalf=oversized?.071f:.079f;
-    constexpr float neckY=1.438f,innerCap=.009f,outerCap=.032f;
+    const float neckHalf=oversized?.085f:.080f;
+    const float stature=.01f*body.height;
+    const float hps=contact.shoulderHeight(stature*.045f,-.025f,stature*.88f,stature*.845f);
+    const float offset=supportOffset(body,contact);
+    const float neckY=hps-offset;
+    const float sleeveUnderarm=(oversized?.685f:.695f)*stature-offset;
+    constexpr float innerCap=.009f,outerCap=.024f;
     float shoulderX=0,shoulderY=0;
     if(tee) {
         // The shoulder tape crosses the neck and follows the sloped seam out to each sleeve.
@@ -128,14 +156,13 @@ void Simulation::draftPanels() {
     const bool dryTank=std::string_view(design.productId)=="437410";
     const int outer=ribbed || dryTank ? 4 : 5;
     const int inner=tee?11:8;
-    // Opening and strap widths are fractions of flat chest width measured in the product photographs.
-    const float outerWidth=ribbed?.89f:(racerback?.61f:(dryTank?.78f:.71f));
-    const float neckWidth=ribbed?.67f:(racerback?.43f:.53f);
-    const float chestToHeight=.01f*dims.chestFlatCm/patternHeight;
-    const float frontTop=ribbed?.742f:.838f-(design.mens && !dryTank?.43f:.34f)*chestToHeight;
-    const float backTop=ribbed?.786f:.838f-(dryTank?.05f:(racerback?.13f:.17f))*chestToHeight;
-    const float underarm=design.mens && !tee?.670f:.687f;
-    const float hem=(tee?.840f:backTop)-lengthM/patternHeight;
+    const float shoulder=neckY/patternHeight;
+    const float frontTop=shoulder-(dryTank?.145f:racerback?.155f:ribbed?.157f:.151f)/patternHeight;
+    const float backTop=shoulder-(dryTank?.065f:racerback?.076f:.092f)/patternHeight;
+    const float underarm=shoulder-(dryTank?.215f:.208f)/patternHeight;
+    const float strapWidth=dryTank?.035f:racerback?.038f:ribbed?.037f:.048f;
+    const float innerStrap=ribbed?.104f:.111f;
+    const float hem=(tee?.840f:shoulder)-lengthM/patternHeight;
     const float waistM=dims.waistCircCm*.01f;
     const float hipM=dims.hipCircCm*.01f;
     const float hipDepth=std::min(.18f,lengthM*.5f);
@@ -143,8 +170,10 @@ void Simulation::draftPanels() {
     const int slitTop=slitM>0 ? std::clamp(int(std::lround(hipRow*slitM/(lengthM-hipDepth))),1,hipRow-1) : 0;
     constexpr int backColumn=perimeter*3/4;
     for(int row=0;row<=rows;++row) for(int c=0;c<perimeter;++c){
-        float a=2*pi*c/perimeter-pi/2;
-        float sx=std::sin(a), cz=std::cos(a); Vec3 pos;
+        const int mirror=(perimeter+halfCols-c)%perimeter;
+        float a=2*pi*std::min(c,mirror)/perimeter-pi/2;
+        float sx=c==mirror?0.f:(c<mirror?1.f:-1.f)*std::sin(a),cz=std::cos(a); Vec3 pos;
+        float skirtGirth=0;
         if(design.bottom()) {
             float depth, girth, fold=0;
             if(row>=hipRow) {
@@ -157,21 +186,24 @@ void Simulation::draftPanels() {
                 else
                     depth=hipDepth+(lengthM-hipDepth-slitM)*float(hipRow-row)/(hipRow-slitTop);
                 float t=(depth-hipDepth)/(lengthM-hipDepth);
-                girth=hipM*(1.f+.022f*t);
+                girth=hipM*(1.f-.035f*t);
                 if(design.flaredHem) {
-                    float flare=std::max(0.f,(t-.29f)/.71f);
-                    girth+=.71f*lengthM*flare*flare;
-                    fold=flare*(.009f*std::cos(10*a+.3f)+.004f*std::cos(7*a));
+                    girth=hipM*(1.f+.36f*std::pow(t,1.22f));
                 }
             }
+            if(design.flaredHem)
+                fold=smoothBetween(0,.050f,depth)*(.012f+.010f*depth/lengthM)*
+                    (.72f*std::cos(9*a+.3f)+.28f*std::cos(5*a));
+            skirtGirth=girth;
             float radius=girth/ellipse;
             pos={sx*(radius+fold),patternHeight*waistHeight-depth,cz*(.72f*radius+fold)};
         } else {
             // One level ring just below the armholes measures exactly twice the published flat width.
             float sideAngle=2.f*std::min(c%halfCols,halfCols-c%halfCols)/halfCols;
-            float top=tankTop(sideAngle,cz>0?frontTop:backTop,underarm,outer,inner);
+            const bool racerBackPanel=racerback && cz<0;
+            float top=tankTop(sideAngle,cz>0?frontTop:backTop,underarm,shoulder,outer,inner,racerBackPanel);
             // The ribbed tank has a modest shirttail hem that rises at each side seam.
-            const float hemRise=ribbed?.028f:(racerback?.019f:0.f);
+            const float hemRise=ribbed?.024f:(racerback?.047f:0.f);
             float bottom=hem+hemRise*std::pow(std::abs(sx),6.f);
             float y=row<=bustRow ? bottom+(bustHeight-bottom)*float(row)/bustRow
                                  : bustHeight+(top-bustHeight)*float(row-bustRow)/(rows-bustRow);
@@ -180,22 +212,38 @@ void Simulation::draftPanels() {
             float hip=std::clamp((waistHeight-y)/.10f,0.f,1.f);
             float taper=tee ? 1.f+(oversized?.035f:.050f)*std::clamp((bustHeight-y)/(bustHeight-hem),0.f,1.f)
                             : 1.f-(ribbed?.047f:.021f)*waist+(ribbed?.055f:.066f)*hip;
-            if(dryTank) taper=1.f-.008f*waist+.010f*hip;
+            if(tee && !oversized) taper=1.f-.050f*waist+.045f*hip;
+            if(dryTank) taper=1.f-.070f*waist+.022f*hip;
+            if(racerback) taper=1.f+.018f*waist+.103f*hip;
             float radius=.02f*dims.chestFlatCm*taper/ellipse;
             float ripple=(.003f*std::cos(5*a+8*y)+.002f*std::sin(8*a-5*y))*hip;
             float backInset=1;
-            if(racerback && cz<0 && row>bustRow)
-                backInset-=.31f*std::abs(cz)*float(row-bustRow)/(rows-bustRow);
+            if(racerBackPanel) {
+                if(row>bustRow) backInset-=.18f*std::abs(cz)*float(row-bustRow)/(rows-bustRow);
+                else ripple+=.004f*std::cos(14*a)*smoothBetween(.2f,.8f,-cz)*smoothBetween(0,6,float(bustRow-row));
+            }
             // The front and back panels turn toward each other as they reach the shoulder seam.
             float depthScale=1.f-.75f*smoothBetween(.728f,.850f,y);
             pos={sx*(radius+ripple)*backInset,patternHeight*y,centerZ+cz*(panelDepth*radius+ripple)*depthScale};
             if(!tee && row>bustRow) {
-                const float k=sideAngle*halfCols*.5f, flat=.005f*dims.chestFlatCm;
-                float rim=flat*neckWidth*std::abs(sx)/std::cos(pi*inner/halfCols);
-                if(k<inner) rim=flat*blend(outerWidth,neckWidth,(k-outer)/(inner-outer));
-                if(k<outer) rim=blend(radius,flat*outerWidth,k/outer);
-                if(racerback && cz<0) rim*=backInset;
+                const float k=sideAngle*halfCols*.5f;
+                const float outerStrap=innerStrap+strapWidth;
+                float rim=innerStrap*std::abs(sx)/std::cos(pi*inner/halfCols);
+                if(k<inner) rim=blend(outerStrap,innerStrap,(k-outer)/(inner-outer));
+                if(k<outer) {
+                    const float t=k/outer;
+                    rim=blend(radius,outerStrap,t);
+                    if(racerBackPanel) rim-=.074f*std::sin(pi*t);
+                }
+                if(racerBackPanel && k>inner) rim*=backInset;
                 pos.x=std::copysign(blend(std::abs(pos.x),rim,smoothBetween(bustRow,rows,float(row))),sx);
+                if(k>0 && (row<rows || k<outer || k>inner)) {
+                    // Fit the upper panel on its own side of the torso before the opening wraps the arm.
+                    const Vec3 worn={-std::abs(pos.x),pos.y+offset,pos.z};
+                    const float fitted=contact.panelDepth(worn,cz>0?1.f:-1.f,clearance);
+                    pos.z=blend(pos.z,fitted,smoothBetween(bustRow,bustRow+3,float(row)));
+                }
+                armholePanels.push_back(id(row,c));
             }
             if(tee && row<bustRow) {
                 // Excess panel width hangs in long folds to either side of the flatter front.
@@ -213,7 +261,7 @@ void Simulation::draftPanels() {
             Vec3 rim;
             if(k<=outer) {
                 float t=k/outer;
-                rim={side*(.171f+(shoulderX-.171f)*t),1.219f+(shoulderY-1.219f)*t,
+                rim={side*(.171f+(shoulderX-.171f)*t),blend(sleeveUnderarm,shoulderY,t),
                      front*(.065f*std::sin(t*pi*.75f)+.004f*t)};
             } else if(k<=inner) {
                 float t=(k-outer)/(inner-outer);
@@ -230,22 +278,18 @@ void Simulation::draftPanels() {
             pos=chest*(1-ratio)+rim*ratio;
         }
         cloth.positions.push_back(pos);
-    }
-    if(!design.bottom()) {
-        // Measure the tape along the shaped center back. Its vertical projection is shorter.
-        float low=-.08f, high=.14f;
-        auto hemWeight=[](int row){return std::max(0.f,1.f-float(row)/bustRow);};
-        for(int pass=0;pass<20;++pass) {
-            float lift=(low+high)*.5f, tape=0;
-            for(int r=1;r<=rows;++r) {
-                Vec3 d=cloth.positions[id(r,backColumn)]-cloth.positions[id(r-1,backColumn)];
-                d.y+=lift*(hemWeight(r)-hemWeight(r-1));
-                tape+=length(d);
+        if(design.flaredHem && c==perimeter-1) {
+            float circumference=0;
+            for(int k=0;k<perimeter;++k)
+                circumference+=length(cloth.positions[id(row,k+1)]-cloth.positions[id(row,k)]);
+            // The gathers consume fabric within the published waist and hip tapes.
+            const float scale=skirtGirth/circumference;
+            for(int k=0;k<perimeter;++k) {
+                auto& point=cloth.positions[id(row,k)];
+                point.x*=scale;
+                point.z*=scale;
             }
-            if(tape>lengthM) low=lift; else high=lift;
         }
-        for(int r=0;r<bustRow;++r) for(int c=0;c<perimeter;++c)
-            cloth.positions[id(r,c)].y+=high*hemWeight(r);
     }
     // The two lips of the walking slit share a single vertex at its apex.
     const int slitBase=int(cloth.positions.size());
@@ -284,14 +328,21 @@ void Simulation::draftPanels() {
                     Vec3 mid=(a+bpos)*.5f;
                     const float outwards=float(side?k:columns-1-k)/(columns-1);
                     const float crown=tee ? mid.y+innerCap+(outerCap-innerCap)*outwards
-                                          : patternHeight*(.846f-.023f*std::abs(mid.x)/.18f);
+                                          : patternHeight*(shoulder-.012f*outwards);
                     p.y+=(crown-mid.y)*std::sin(pi*t);
                     bridge[j][k]=int(cloth.positions.size()); cloth.positions.push_back(p);
-                    if(j==across/2 && (!tee || std::abs(p.x)<.165f)) anchorIndices.push_back(bridge[j][k]);
+                    if(tee && j==across/2 && std::abs(p.x)<.165f) anchorIndices.push_back(bridge[j][k]);
+                }
+                if(!tee) {
+                    anchorIndices.push_back(bridge[j][k]);
+                    if(j%2==1) temporarySupports.push_back(bridge[j][k]);
                 }
             }
             for(int j=0;j<across;++j) for(int k=0;k+1<columns;++k)
                 addQuad(bridge[j][k],bridge[j][k+1],bridge[j+1][k+1],bridge[j+1][k]);
+            auto& backTape=backTapes[side];
+            for(int j=across/2;j<=across;++j) backTape.push_back(bridge[j][side?0:columns-1]);
+            for(int r=rows-1;r>=0;--r) backTape.push_back(id(r,side?halfCols+inner:perimeter-inner));
             if(tee) {
                 std::vector<int> hole;
                 const int sideColumn=side?halfCols:0, towardsFront=side?-1:1;
@@ -301,17 +352,33 @@ void Simulation::draftPanels() {
                 addSleeve(std::move(hole),side?1:-1);
             }
         }
+        // The length runs from the shoulder seam over the back panel to the hem.
+        float low=-.12f,high=.22f;
+        auto hemWeight=[](int i){return std::max(0.f,1.f-float(i/perimeter)/bustRow);};
+        const auto& backTape=backTapes[0];
+        for(int pass=0;pass<20;++pass) {
+            const float lift=(low+high)*.5f;
+            float tape=0;
+            for(size_t k=1;k<backTape.size();++k) {
+                const int a=backTape[k-1],b=backTape[k];
+                Vec3 d=cloth.positions[b]-cloth.positions[a];
+                d.y+=lift*(hemWeight(b)-hemWeight(a));
+                tape+=length(d);
+            }
+            if(tape>lengthM) low=lift; else high=lift;
+        }
+        for(int i=0;i<bustRow*perimeter;++i) cloth.positions[i].y+=high*hemWeight(i);
     }
     auto brace=[&](int a,int b,float k) { springs.push_back({a,b,0,k,false}); };
     for(int r=0;r<=rows;++r) for(int c=0;c<perimeter;++c) {
         if(r<rows) brace(panelVertex(r,c,c),panelVertex(r+1,c+1,c),.40f);
         if(r+2<=rows) {
-            brace(id(r,c),id(r+2,c),.045f);
+            brace(id(r,c),id(r+2,c),.060f);
             if(r<slitTop && c==backColumn)
                 brace(panelVertex(r,c,c),panelVertex(r+2,c,c),.045f);
         }
         if(r>=slitTop || c+1!=backColumn)
-            brace(panelVertex(r,c,c),panelVertex(r,c+2,c),.045f);
+            brace(panelVertex(r,c,c),panelVertex(r,c+2,c),.060f);
     }
 }
 } // namespace closet

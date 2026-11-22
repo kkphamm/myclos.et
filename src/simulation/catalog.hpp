@@ -28,6 +28,7 @@ struct Item {
         return cut==Cut::Joggers?.586f:.83f;
     }
     constexpr bool bottom() const { return cut==Cut::Skirt || pants(); }
+    constexpr bool elasticWaist() const { return cut==Cut::Skirt || cut==Cut::Joggers; }
 };
 
 // US finished-product charts are in inches. Zero indicates an unpublished dimension.
