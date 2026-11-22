@@ -17,12 +17,13 @@ void section(const char* name) {
 }
 void rule() { gap(5); ImGui::Separator(); gap(6); }
 
-void slider(const char* name,float& value,float low,float high,const char* format,bool integral=true) {
+void slider(const char* name,float& value,float low,float high,const char* format,bool integral=true,
+            float displayScale=1) {
     ImGui::PushID(name);
     auto* dl=ImGui::GetWindowDrawList();
     const ImVec2 p=ImGui::GetCursorScreenPos();
     const float width=ImGui::GetContentRegionAvail().x;
-    char numeric[32]; std::snprintf(numeric,sizeof(numeric),format,value);
+    char numeric[32]; std::snprintf(numeric,sizeof(numeric),format,value/displayScale);
     label(dl,p,sans,16,ink,name);
     label(dl,{p.x+width-measure(bold,15,numeric),p.y},bold,15,wine,numeric);
     ImGui::Dummy({1,13});
@@ -99,6 +100,15 @@ void outfitRow(Ui& ui,int slot) {
     ImGui::PopID();
 }
 
+void unitToggle(Ui& ui,const char* id,float right,float y) {
+    ImGui::PushID(id);
+    ImGui::SetCursorScreenPos({right-65,y});
+    if(choice("cm",!ui.inches,32,25)) ui.inches=false;
+    ImGui::SameLine(0,2);
+    if(choice("in",ui.inches,31,25)) ui.inches=true;
+    ImGui::PopID();
+}
+
 void sizeChart(Ui& ui) {
     const auto& item=items[ui.item()];
     gap(2);
@@ -106,10 +116,7 @@ void sizeChart(Ui& ui) {
     auto* dl=ImGui::GetWindowDrawList();
     const float width=ImGui::GetContentRegionAvail().x;
     label(dl,{p.x,p.y+4},sans,14,muted,ui.slot==0?"Finished top":"Finished bottom");
-    ImGui::SetCursorScreenPos({p.x+width-65,p.y});
-    if(choice("cm",!ui.inches,32,25)) ui.inches=false;
-    ImGui::SameLine(0,2);
-    if(choice("in",ui.inches,31,25)) ui.inches=true;
+    unitToggle(ui,"Garment units",p.x+width,p.y);
     ImGui::SetCursorScreenPos({p.x,p.y+29});
     float unit=ui.inches?2.54f:1.f;
     ImGui::PushStyleVar(ImGuiStyleVar_CellPadding,{6,3});
@@ -168,18 +175,26 @@ void inspector(Ui& ui,float x,float width,float height) {
     ImGui::SameLine(0,5);
     if(choice("Masculine",ui.masculine,half)) ui.setModel(true);
     gap(5);
+    const ImVec2 measurements=ImGui::GetCursorScreenPos();
+    const float measurementsWidth=ImGui::GetContentRegionAvail().x;
     section("Body measurements");
+    const ImVec2 below=ImGui::GetCursorScreenPos();
+    unitToggle(ui,"Body units",measurements.x+measurementsWidth,measurements.y-4);
+    ImGui::SetCursorScreenPos({below.x,below.y+6});
     const float segmentWidth=(ImGui::GetContentRegionAvail().x-10)/3;
     for(int i=0;i<3;++i) {
         if(i) ImGui::SameLine(0,5);
         if(choice(presetNames[i],ui.body==ui.modelPresets()[i],segmentWidth)) ui.body=ui.modelPresets()[i];
     }
     gap(4);
-    slider("Height",ui.body.height,150,190,"%.0f cm");
-    slider("Chest",ui.body.chest,78,112,"%.0f cm");
-    slider("Waist",ui.body.waist,62,100,"%.0f cm");
-    slider("Hips",ui.body.hips,82,120,"%.0f cm");
-    slider("Shoulder width",ui.body.shoulder,34,50,"%.0f cm");
+    // The body stays in whole centimetres; inches only change the readout.
+    const float unit=ui.inches?2.54f:1.f;
+    const char* length=ui.inches?"%.1f in":"%.0f cm";
+    slider("Height",ui.body.height,150,190,length,true,unit);
+    slider("Chest",ui.body.chest,78,112,length,true,unit);
+    slider("Waist",ui.body.waist,62,100,length,true,unit);
+    slider("Hips",ui.body.hips,82,120,length,true,unit);
+    slider("Shoulder width",ui.body.shoulder,34,50,length,true,unit);
     if(!ui.store) {
         rule();
         section("Simulation");
