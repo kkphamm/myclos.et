@@ -50,6 +50,7 @@ def influence(prefixes):
 lower = influence(('lowerarm', 'finger', 'metacarpal', 'wrist'))
 arm = influence(('upperarm', 'lowerarm', 'finger', 'metacarpal', 'wrist'))
 leg = influence(('upperleg', 'lowerleg', 'foot', 'toe'))
+finger = influence(('finger',))
 
 
 def target(name):
@@ -76,7 +77,7 @@ def pose(points):
         bend /= np.linalg.norm(bend)
         # Aim the forearm in the shoulder's local frame so the wrist clears the hip.
         forearm_angle = arm_angle - angle
-        desired = np.array([side * np.sin(forearm_angle), -np.cos(forearm_angle), .10])
+        desired = np.array([side * np.sin(forearm_angle), -np.cos(forearm_angle), .22])
         desired /= np.linalg.norm(desired)
         axis = np.cross(bend, desired)
         rel = points - elbow
@@ -131,15 +132,10 @@ def write(name, rows):
 
 
 def display_topology():
-    # These cuts select the same open rims on both HM08 fitting models.
+    # These cuts select the same open head and foot rims on both HM08 fitting models.
     surface = base[:COUNT]
     x, y, z = surface.T
     cut = (y > 6.12) | ((y < -7) & (z > .85))
-    for suffix in ('L', 'R'):
-        wrist = joint(base, 'wrist', suffix)
-        elbow = joint(base, 'lowerarm01', suffix)
-        axis = wrist - elbow
-        cut |= (x*wrist[0] > 0) & ((surface - wrist) @ (axis / np.linalg.norm(axis)) > .10) & (lower[:COUNT] > .55)
     kept = faces[~cut[faces].any(axis=1)]
     directed = kept[:, [0, 1, 1, 2, 2, 0]].reshape(-1, 2)
     _, index, count = np.unique(np.sort(directed, axis=1), axis=0, return_index=True, return_counts=True)
@@ -151,7 +147,7 @@ def display_topology():
         while (following := next_on_rim.pop(rim[-1])) != start:
             rim.append(following)
         rims.append(np.array(rim))
-    assert len(rims) == 5
+    assert len(rims) == 3
     return kept, rims
 
 
@@ -212,13 +208,10 @@ def display_caps(rest):
                 y = levels[0] + (levels[-1] - levels[0])*t
                 width, back, front = (np.interp(y, levels, profile) for profile in contours)
                 return np.array([0, (front+back)/2, y]), np.array([width, (front-back)/2])
-            if foot:
-                scale = np.sqrt(max(0, 1 - (max(0, t - .21) / .79)**2))
-                depth = radii[1]*(1 - .56*t)
-                return (np.array([center[0] - side*.012*t, depth + .001, center[2] + (toe - center[2])*t]),
-                        np.array([radii[0]*1.02, depth]) * scale)
-            scale = np.sqrt(max(0, 1 - ((t - .29) / .71)**2))
-            return (center + np.array([side*.011*t, .015*t, -.166*t]), radii * [1.20, 1.35] * scale)
+            scale = np.sqrt(max(0, 1 - (max(0, t - .21) / .79)**2))
+            depth = radii[1]*(1 - .56*t)
+            return (np.array([center[0] - side*.012*t, depth + .001, center[2] + (toe - center[2])*t]),
+                    np.array([radii[0]*1.02, depth]) * scale)
 
         def pack(point, anchor, partner, mix):
             index = len(points)
@@ -234,9 +227,6 @@ def display_caps(rest):
             contour[:, :2] += direction * width
             if head:
                 contour[:, 1] += np.interp(midpoint[2], levels, bridge) * np.maximum(0, direction[:, 1])**12
-            elif not foot:
-                thumb = .010 * np.exp(-((t - .39) / .17)**2) * ((1 - side*direction[:, 0]) / 2)**6
-                contour[:, 0] -= side*thumb
             blend = min(1, t / .23)
             blend = blend*blend*(3 - 2*blend)
             moved = edge + midpoint - center
@@ -282,7 +272,8 @@ def display_caps(rest):
         relax(.45)
         relax(-.47)
     change = points - joined
-    limit = .003 / np.maximum(.003, np.linalg.norm(change, axis=1))
+    # Fingers keep their modeled gaps instead of being softened together.
+    limit = .003 / np.maximum(.003, np.linalg.norm(change, axis=1)) * (1 - finger[anchors[:, 0]])
     points = joined + change*limit[:, None]
 
     a, b, mix = anchors.T
