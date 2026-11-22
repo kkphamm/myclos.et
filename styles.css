@@ -78,11 +78,12 @@ tbody th { width: 29%; font-weight: 650; }
   .milestone-figures { grid-template-columns: 1fr; max-width: 18rem; }
 }
 @media print {
+  .milestone { font-size: 10pt; }
   .milestone section { padding: .55rem 0 0; }
   .milestone h2 { margin: 0 0 .35rem; }
   .milestone .summary { margin: .55rem 0; font-size: inherit; }
   .milestone p { max-width: none; margin-bottom: .35rem; }
-  .milestone-figures { max-width: 4.1in; margin-bottom: .42rem; break-inside: avoid; }
+  .milestone-figures { max-width: 3.6in; margin-bottom: .42rem; break-inside: avoid; }
   .milestone-figures figcaption { font-size: 8.25pt; }
   .milestone-links { grid-template-columns: repeat(3, 1fr); break-inside: avoid; }
 }

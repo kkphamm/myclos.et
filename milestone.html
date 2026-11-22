@@ -14,13 +14,14 @@
       <p class="milestone-course">CS184 · Fall 2026 Milestone Report</p>
       <p class="summary">myclos.et is an interactive 3D fitting room that shows how the same garment drapes on bodies with different proportions.</p>
       <p>Kenny Pham, Aiden Solomon, Jeslyn Nguyen, and Junehee Lee</p>
-      <p><a href="index.html">Project proposal</a></p>
+      <p><a href="index.html">Project proposal</a> · Webpage: <span class="milestone-blank">[Add URL]</span> · Video: <span class="milestone-blank">[Add video link]</span> · Slides: <span class="milestone-blank">[Add slides link]</span></p>
     </header>
 
     <section aria-labelledby="progress-heading">
       <h2 id="progress-heading">Progress</h2>
-      <p>We reached our milestone goal of two garments draping on an adjustable body. The C++ demo now supports 11 styles in S/M/L, live body measurements, two-piece outfits, wind, and a stretch heatmap. Since the AI-assisted starting prototype, the fitting models and garment patterns have been revised, and the app can export measurements and matched views.</p>
-      <p><strong>Team contributions</strong> <span class="milestone-blank">[Add what each teammate implemented or tested]</span></p>
+      <p>We reached our milestone goal of two garments draping on an adjustable body. Starting from an AI-assisted prototype, we built a C++/OpenGL fitting room with feminine and masculine MakeHuman models whose height, chest, waist, hips, and shoulders update live in cm or inches. Eleven UNIQLO-style garments in S/M/L are built from size charts and simulated as mass-spring cloth with Verlet integration, strain limiting, distance-field body collision, and particle self-collision. Users can layer two-piece outfits, add wind, view a stretch heatmap, and browse a closet of cached previews. Tests and benchmarks export measurements, timing, and collision results.</p>
+      <p><strong>Progress vs. plan.</strong> We are ahead on features but behind on evaluation: cloth still crosses the body at the shoulders and hips, and our experiments haven’t been run yet.</p>
+      <p><strong>Team contributions.</strong> Aiden and Junehee worked out the theory (mass-spring model, integration, body collision, fit evaluation); Kenny and Jeslyn implemented it. Kenny built the base app: the OpenGL viewer, cloth solver, adjustable fitting models, garment catalog, and closet mode. Jeslyn sped up body edits and improved the models’ hands, arm pose, and units.</p>
     </section>
 
     <section aria-labelledby="results-heading">
@@ -44,16 +45,7 @@
 
     <section aria-labelledby="plan-heading">
       <h2 id="plan-heading">Updated plan</h2>
-      <p>We’ll focus on reducing cloth intersections near the shoulders and hips. Then we’ll compare two mesh resolutions and measure how timestep and spring stiffness affect settling and runtime. We’ll use consistent camera views for the final fit comparison and document the team’s implementation and results.</p>
-    </section>
-
-    <section aria-labelledby="links-heading">
-      <h2 id="links-heading">Milestone links</h2>
-      <dl class="milestone-links">
-        <div><dt>Published webpage</dt><dd class="milestone-blank">[Add URL]</dd></div>
-        <div><dt>Progress video</dt><dd class="milestone-blank">[Add video link]</dd></div>
-        <div><dt>Slides</dt><dd class="milestone-blank">[Add slides link]</dd></div>
-      </dl>
+      <p>Following staff feedback, our main focus is experiments: (1) <strong>collision accuracy</strong> vs. distance-field resolution and an exact mesh query, then fixing shoulder and hip crossings; (2) <strong>solver stability</strong> across timestep × stiffness at two cloth resolutions; (3) penetration and recovery during <strong>live edits</strong>; (4) ease vs. stretch for three bodies × S/M/L. We also plan to add more clothing, improve the UI, and polish the overall product. Stretch goals: skinned arm pose, fabric shading.</p>
     </section>
   </main>
 </body>
